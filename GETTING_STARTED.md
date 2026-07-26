@@ -127,6 +127,22 @@ git commit -m "0.1: repo scaffold + CI skeleton"
 git push
 ```
 
+## Step 10 — Connect Cloudflare Pages (after 0.1 is committed and pushed)
+
+This is an account-level action only you can do — Claude Code can't click through the Cloudflare dashboard for you.
+
+1. Go to [dash.cloudflare.com](https://dash.cloudflare.com) and sign up / log in (free tier is fine).
+2. In the sidebar: **Workers & Pages** → **Create** → **Pages** → **Connect to Git**.
+3. Authorize Cloudflare's GitHub app and pick your `o-que-fizeram` repo.
+4. Build settings — this repo is an npm workspace, so use:
+   - **Framework preset:** Astro
+   - **Build command:** `npm install && npm run build --workspace=web`
+   - **Build output directory:** `web/dist`
+   - **Root directory:** leave as `/` (the repo root — not `web/`), so the workspace install picks up both packages.
+5. Click **Save and Deploy**. First build takes a minute or two; you'll get a `*.pages.dev` URL showing the placeholder page.
+
+After this, every push to `main` auto-deploys — no secrets, no GitHub Actions changes needed. (A custom domain can be added later from the same Pages project settings, once there's something worth pointing it at.)
+
 ## A few habits worth keeping
 
 - **Review before you commit.** Claude Code will show you diffs — actually read them, especially anything touching the alignment-engine prompt template (Phase 3), since `CLAUDE.md` treats that as the highest-risk part of the whole project.

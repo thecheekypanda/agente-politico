@@ -1,0 +1,18 @@
+{
+  "name": "o-que-fizeram",
+  "private": true,
+  "workspaces": [
+    "web",
+    "pipeline"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=web",
+    "dev": "npm run dev --workspace=web",
+    "test": "npm run test --workspace=pipeline",
+    "typecheck": "tsc --build --emitDeclarationOnly false --noEmit"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  }
+}

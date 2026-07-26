@@ -1,0 +1,15 @@
+name: Ingestion
+
+on:
+  schedule:
+    # Daily at 06:00 UTC — keeps the Supabase free tier from pausing and
+    # matches the "daily ingestion cron" decision in CLAUDE.md.
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hello world
+        run: echo "Ingestion pipeline placeholder — real logic lands in Phase 1 (docs/BACKLOG.md 1.1)."
