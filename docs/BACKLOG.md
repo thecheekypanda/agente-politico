@@ -4,11 +4,13 @@ Each block below is written to be pasted directly into a GitHub issue (title as 
 
 Legend — Priority: Must / Should / Could (MoSCoW). Size: S / M / L (T-shirt).
 
+**Progress (updated 2026-07-27):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Currently starting Phase 2 (program corpus).
+
 ---
 
 ## Phase 0 — Scaffold
 
-### [ ] 0.1 Repo scaffold + CI skeleton
+### [x] 0.1 Repo scaffold + CI skeleton
 **Priority:** Must · **Size:** S · **Depends on:** —
 
 Set up the project structure: frontend app (Astro or Next.js static export), a `/pipeline` directory for ingestion scripts, a `/docs` directory holding `strategy.md` and `BACKLOG.md`, and a GitHub Actions workflow file that runs on a schedule (cron) but does nothing yet beyond a "hello world" step.
@@ -19,28 +21,28 @@ Set up the project structure: frontend app (Astro or Next.js static export), a `
 
 ## Phase 1 — Ingestion (build and test in isolation before any LLM code)
 
-### [ ] 1.1 Pull iniciativas from openAR
+### [x] 1.1 Pull iniciativas from openAR
 **Priority:** Must · **Size:** M · **Depends on:** 0.1
 
 Fetch `/iniciativas` from `api.openar.pt` on a daily schedule and store the results.
 
 **Acceptance criteria:** running the job twice in a row does not create duplicate rows (idempotent upsert keyed on the canonical initiative ID).
 
-### [ ] 1.2 Pull vote results
+### [x] 1.2 Pull vote results
 **Priority:** Must · **Size:** M · **Depends on:** 1.1
 
 Fetch `/votacoes` per iniciativa (aprovado/rejeitado/unânime) and link each vote to its initiative.
 
 **Acceptance criteria:** every stored initiative that has a recorded vote shows the correct outcome; re-running the job doesn't duplicate votes.
 
-### [ ] 1.3 Cross-check against parlamento.pt Dados Abertos
+### [x] 1.3 Cross-check against parlamento.pt Dados Abertos
 **Priority:** Must · **Size:** M · **Depends on:** 1.1
 
 For every ingested initiative, resolve and store the canonical parlamento.pt Dados Abertos URL/ID — this, not the openAR ID, is what gets shown to users as the citation.
 
 **Acceptance criteria:** a test asserts every stored initiative has a non-null, resolvable canonical URL.
 
-### [ ] 1.4 Outage / schema-change alerting
+### [x] 1.4 Outage / schema-change alerting
 **Priority:** Must · **Size:** S · **Depends on:** 1.1, 1.2
 
 If the feed errors, returns an empty payload, or a schema field is missing/renamed, the job should fail loudly (e.g. open a GitHub issue automatically, or post to a webhook) rather than silently ingesting nothing or garbage.
@@ -49,6 +51,7 @@ If the feed errors, returns an empty payload, or a schema field is missing/renam
 
 ### [ ] 1.5 DRE decree-law ingestion (lite)
 **Priority:** Should · **Size:** M · **Depends on:** 0.1
+**Status:** Deferred (2026-07-27) — lower priority than Phase 2's Must-priority items, skipped ahead to 2.1. Revisit before the alignment engine needs decree-law coverage.
 
 Scrape the public DRE portal for new decretos-lei, storing the exact série/número and a permalink. **There is no official DRE API** — do not build against `diariodarepublica.pt/dr/api`, it does not exist (confirmed by direct fetch, redirects to an error page).
 

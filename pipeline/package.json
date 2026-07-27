@@ -7,14 +7,17 @@
     "typecheck": "tsc --noEmit",
     "ingest:iniciativas": "tsx src/ingest-iniciativas.ts",
     "ingest:votacoes": "tsx src/ingest-votacoes.ts",
-    "resolve:canonical-urls": "tsx src/resolve-canonical-urls.ts"
+    "resolve:canonical-urls": "tsx src/resolve-canonical-urls.ts",
+    "ingest:programs": "tsx src/ingest-programs.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
+    "unpdf": "^1.8.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "pdf-lib": "^1.17.1",
     "tsx": "^4.23.1",
     "typescript": "^5.6.3",
     "vitest": "^4.1.10"

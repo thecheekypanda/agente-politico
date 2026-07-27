@@ -32,7 +32,7 @@ A public-interest web app that (1) translates Portuguese parliamentary/governmen
 | parlamento.pt Dados Abertos | **Canonical citation source** | Every citation shown to a user must resolve here. |
 | Diário da República (dre.pt) | Decree-laws / gazette entries | No official API — scrape carefully, see constraint above. Lower cadence (2–3x/week) is intentional. |
 | dados.gov.pt | Secondary catalog discovery | Low priority. |
-| Party program PDFs (CNE-lodged, 2025 election cycle) | Alignment engine reference corpus | Chunked/indexed once per cycle; re-index only on a formally revised program. |
+| Party program PDFs (2025 election cycle) | Alignment engine reference corpus | Published by each party on its own official domain, not CNE — confirmed by direct check (2026-07-27): `cne.pt` hosts only administrative/candidacy material (candidate lists, ballots, results), never full program PDFs. CDS-PP ran 2025 as part of the joint "AD" coalition with PSD, with one shared program; AR vote data still tracks PSD and CDS-PP as separate parliamentary groups, so the AD program is mapped to both. Chunked/indexed once per cycle; re-index only on a formally revised program. |
 
 ## Build order (do not skip ahead)
 
