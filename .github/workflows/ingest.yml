@@ -39,6 +39,17 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           LEGISLATURA: 'XVII'
 
+      - name: Resolve canonical parlamento.pt URLs
+        # Cross-checks every iniciativa still missing a canonical_url against
+        # parlamento.pt's own DetalheIniciativa page before it's ever shown
+        # to a user as a citation (CLAUDE.md: citations must resolve to the
+        # official source, not just openAR).
+        if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        run: npm run resolve:canonical-urls --workspace=pipeline
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
       - name: Supabase not configured yet
         if: ${{ secrets.SUPABASE_URL == '' || secrets.SUPABASE_SERVICE_ROLE_KEY == '' }}
         run: |
