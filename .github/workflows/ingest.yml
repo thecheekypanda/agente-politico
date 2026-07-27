@@ -29,6 +29,16 @@ jobs:
           # Bump this when a new legislature starts (roughly once every 4 years).
           LEGISLATURA: 'XVII'
 
+      - name: Ingest votacoes (openAR)
+        # Runs after iniciativas — votacoes.iniciativa_id has an FK to
+        # iniciativas(id), and a step failure above already halts the job.
+        if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        run: npm run ingest:votacoes --workspace=pipeline
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LEGISLATURA: 'XVII'
+
       - name: Supabase not configured yet
         if: ${{ secrets.SUPABASE_URL == '' || secrets.SUPABASE_SERVICE_ROLE_KEY == '' }}
         run: |

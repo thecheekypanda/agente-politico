@@ -5,7 +5,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "ingest:iniciativas": "tsx src/ingest-iniciativas.ts"
+    "ingest:iniciativas": "tsx src/ingest-iniciativas.ts",
+    "ingest:votacoes": "tsx src/ingest-votacoes.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
