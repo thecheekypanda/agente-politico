@@ -10,6 +10,15 @@ export interface FetchPaginatedOptions {
   fetchImpl?: typeof fetch;
   /** Overridable only for tests — production always uses DEFAULT_PAGE_LIMIT. */
   pageLimit?: number;
+  /**
+   * Set true only when a genuinely empty result is expected (e.g. a
+   * brand-new legislature with nothing filed yet). Defaults to false: an
+   * established legislature like the one this project tracks should never
+   * legitimately have zero iniciativas/votacoes, so an empty payload is
+   * treated as a likely outage rather than silently "succeeding" at
+   * ingesting nothing (backlog 1.4).
+   */
+  allowEmpty?: boolean;
 }
 
 interface PaginatedShape<TItem> {
@@ -22,7 +31,12 @@ async function fetchAllPaginated<TItem>(
   schema: z.ZodType<PaginatedShape<TItem>>,
   options: FetchPaginatedOptions,
 ): Promise<TItem[]> {
-  const { legislatura, fetchImpl = fetch, pageLimit = DEFAULT_PAGE_LIMIT } = options;
+  const {
+    legislatura,
+    fetchImpl = fetch,
+    pageLimit = DEFAULT_PAGE_LIMIT,
+    allowEmpty = false,
+  } = options;
   const all: TItem[] = [];
   let page = 1;
 
@@ -44,6 +58,14 @@ async function fetchAllPaginated<TItem>(
     if (!parsed.success) {
       throw new Error(
         `openAR ${path} response did not match the expected schema (page ${page}): ${parsed.error.message}`,
+      );
+    }
+
+    if (page === 1 && parsed.data.total === 0 && !allowEmpty) {
+      throw new Error(
+        `openAR ${path} returned an empty payload (total: 0) — treating this as a likely ` +
+          'outage or misconfiguration rather than silently ingesting nothing. Pass ' +
+          '{ allowEmpty: true } if zero results are genuinely expected here.',
       );
     }
 

@@ -69,4 +69,10 @@ describe('fetchAllVotacoes', () => {
 
     await expect(fetchAllVotacoes({ fetchImpl })).rejects.toThrow(/503/);
   });
+
+  it('throws on an empty payload instead of silently ingesting nothing', async () => {
+    const fetchImpl = async () => jsonResponse({ data: [], total: 0, page: 1, limit: 200 });
+
+    await expect(fetchAllVotacoes({ fetchImpl })).rejects.toThrow(/empty payload/i);
+  });
 });

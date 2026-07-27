@@ -72,4 +72,18 @@ describe('fetchAllIniciativas', () => {
 
     await expect(fetchAllIniciativas({ fetchImpl })).rejects.toThrow(/schema/i);
   });
+
+  it('throws on an empty payload instead of silently ingesting nothing', async () => {
+    const fetchImpl = async () => jsonResponse({ data: [], total: 0, page: 1, limit: 200 });
+
+    await expect(fetchAllIniciativas({ fetchImpl })).rejects.toThrow(/empty payload/i);
+  });
+
+  it('allows an empty payload when explicitly opted in', async () => {
+    const fetchImpl = async () => jsonResponse({ data: [], total: 0, page: 1, limit: 200 });
+
+    const result = await fetchAllIniciativas({ fetchImpl, allowEmpty: true });
+
+    expect(result).toEqual([]);
+  });
 });

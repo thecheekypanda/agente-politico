@@ -10,6 +10,9 @@ on:
 jobs:
   ingest:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -54,3 +57,42 @@ jobs:
         if: ${{ secrets.SUPABASE_URL == '' || secrets.SUPABASE_SERVICE_ROLE_KEY == '' }}
         run: |
           echo "::notice::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY repo secrets are not set, so there's nowhere to write ingested data yet — skipping. See GETTING_STARTED.md Step 11."
+
+      # Every ingestion step above fails loudly on a bad HTTP status, a
+      # schema mismatch, or an unexpectedly empty payload (see
+      # pipeline/src/openar-client.ts) — a failed step lands here rather
+      # than relying on GitHub's own (opt-in, easy-to-miss) failure emails.
+      # Comments on an existing open issue instead of opening a new one
+      # each day so a multi-day outage doesn't spam the issue tracker.
+      - name: Open or update an issue on ingestion failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const label = 'ingestion-failure';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `Ingestion workflow run failed: ${runUrl}\n\nThe pipeline is designed to fail loudly — a bad HTTP status, a schema mismatch, or an unexpectedly empty payload — rather than silently ingest nothing or garbage. Check the run logs for which step failed and why.`;
+
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+            });
+
+            if (existing.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing[0].number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'Ingestion failure',
+                body,
+                labels: [label],
+              });
+            }
