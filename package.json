@@ -9,7 +9,7 @@
     "build": "npm run build --workspace=web",
     "dev": "npm run dev --workspace=web",
     "test": "npm run test --workspace=pipeline",
-    "typecheck": "tsc --build --emitDeclarationOnly false --noEmit"
+    "typecheck": "npm run typecheck --workspace=pipeline"
   },
   "devDependencies": {
     "prettier": "^3.3.3",

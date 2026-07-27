@@ -143,6 +143,24 @@ This is an account-level action only you can do — Claude Code can't click thro
 
 After this, every push to `main` auto-deploys — no secrets, no GitHub Actions changes needed. (A custom domain can be added later from the same Pages project settings, once there's something worth pointing it at.)
 
+## Step 11 — Create the Supabase project (needed for backlog 1.1+)
+
+Another account-level step only you can do. Until this is done, the nightly ingestion workflow will run but skip itself with a notice — that's expected, not an error.
+
+1. Go to [supabase.com](https://supabase.com) and sign up / log in (free tier is fine).
+2. **New project** → pick an org, name it (e.g. `o-que-fizeram`), set a database password (save it somewhere — you likely won't need it day-to-day since the app uses the API key, not a direct DB connection), pick a region close to Portugal (e.g. `eu-west-1`/`eu-west-2`).
+3. Once the project is provisioned, run the migration that creates the `iniciativas` table: **SQL Editor** in the left sidebar → **New query** → paste the contents of `supabase/migrations/20260727000000_iniciativas.sql` from this repo → **Run**. (There's only one migration file so far; run new ones the same way as they're added, in filename order.)
+4. Get your credentials: **Project Settings** (gear icon) → **API**.
+   - **Project URL** → this is `SUPABASE_URL`.
+   - **service_role key** (under "Project API keys", *not* the `anon` key — the service role key bypasses row-level security, which is correct for a trusted server-side ingestion job, but never expose it in frontend code) → this is `SUPABASE_SERVICE_ROLE_KEY`.
+5. Add both as GitHub Actions secrets so the cron job can use them: on GitHub, your repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**. Add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
+6. (Optional, for testing ingestion locally before the next cron run) create a `.env` file at the repo root — it's already gitignored — with:
+   ```
+   SUPABASE_URL=https://xxxx.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   ```
+   Then run `npx tsx --env-file=.env pipeline/src/ingest-iniciativas.ts` from the repo root, or trigger the workflow manually from GitHub's **Actions** tab → **Ingestion** → **Run workflow** once the secrets are set.
+
 ## A few habits worth keeping
 
 - **Review before you commit.** Claude Code will show you diffs — actually read them, especially anything touching the alignment-engine prompt template (Phase 3), since `CLAUDE.md` treats that as the highest-risk part of the whole project.

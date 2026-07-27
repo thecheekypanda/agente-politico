@@ -11,5 +11,25 @@ jobs:
   ingest:
     runs-on: ubuntu-latest
     steps:
-      - name: Hello world
-        run: echo "Ingestion pipeline placeholder — real logic lands in Phase 1 (docs/BACKLOG.md 1.1)."
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Ingest iniciativas (openAR)
+        if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        run: npm run ingest:iniciativas --workspace=pipeline
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Scoped to the current legislature — fetching full history (27k+
+          # records back to the API's start) trips openAR's rate limit.
+          # Bump this when a new legislature starts (roughly once every 4 years).
+          LEGISLATURA: 'XVII'
+
+      - name: Supabase not configured yet
+        if: ${{ secrets.SUPABASE_URL == '' || secrets.SUPABASE_SERVICE_ROLE_KEY == '' }}
+        run: |
+          echo "::notice::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY repo secrets are not set, so there's nowhere to write ingested data yet — skipping. See GETTING_STARTED.md Step 11."

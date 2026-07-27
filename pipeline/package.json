@@ -4,10 +4,16 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ingest:iniciativas": "tsx src/ingest-iniciativas.ts"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.8",
+    "zod": "^4.4.3"
+  },
   "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.23.1",
     "typescript": "^5.6.3",
     "vitest": "^4.1.10"
   }
