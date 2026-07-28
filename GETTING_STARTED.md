@@ -149,7 +149,13 @@ Another account-level step only you can do. Until this is done, the nightly inge
 
 1. Go to [supabase.com](https://supabase.com) and sign up / log in (free tier is fine).
 2. **New project** → pick an org, name it (e.g. `o-que-fizeram`), set a database password (save it somewhere — you likely won't need it day-to-day since the app uses the API key, not a direct DB connection), pick a region close to Portugal (e.g. `eu-west-1`/`eu-west-2`).
-3. Once the project is provisioned, run the migration that creates the `iniciativas` table: **SQL Editor** in the left sidebar → **New query** → paste the contents of `supabase/migrations/20260727000000_iniciativas.sql` from this repo → **Run**. (There's only one migration file so far; run new ones the same way as they're added, in filename order.)
+3. Once the project is provisioned, run every file in `supabase/migrations/` **in filename order** — each one only creates what it adds, so skipping one leaves a table/index/function missing: **SQL Editor** in the left sidebar → **New query** → paste the file's contents → **Run**. Repeat per file, oldest timestamp first:
+   - `20260727000000_iniciativas.sql`
+   - `20260727010000_votacoes.sql`
+   - `20260727020000_iniciativas_canonical_url_index.sql`
+   - `20260727030000_party_programs.sql`
+
+   Run any new migration files the same way as they're added.
 4. Get your credentials: **Project Settings** (gear icon) → **API**.
    - **Project URL** → this is `SUPABASE_URL`.
    - **service_role key** (under "Project API keys", *not* the `anon` key — the service role key bypasses row-level security, which is correct for a trusted server-side ingestion job, but never expose it in frontend code) → this is `SUPABASE_SERVICE_ROLE_KEY`.
@@ -160,6 +166,8 @@ Another account-level step only you can do. Until this is done, the nightly inge
    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    ```
    Then run `npx tsx --env-file=.env pipeline/src/ingest-iniciativas.ts` from the repo root, or trigger the workflow manually from GitHub's **Actions** tab → **Ingestion** → **Run workflow** once the secrets are set.
+7. **Party program PDFs are a separate workflow, not part of the daily cron.** Once secrets are set, go to **Actions** → **Ingest party programs** → **Run workflow** — this one only needs running once per election cycle (or whenever a program is formally revised), not daily.
+8. To confirm it actually worked: in Supabase, **Table Editor** in the left sidebar → check `iniciativas` and `votacoes` have rows after step 6/the Ingestion workflow, and `party_programs`/`program_chunks` have rows after step 7.
 
 ## A few habits worth keeping
 
