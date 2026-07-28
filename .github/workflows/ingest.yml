@@ -13,6 +13,13 @@ jobs:
     permissions:
       contents: read
       issues: write
+    # GitHub Actions does not allow the `secrets` context inside step-level
+    # `if:` conditions at all (a hard restriction, not caught by YAML syntax
+    # checking) — exposing them as job-level env vars first and gating on
+    # `env.X` instead is the documented workaround.
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,11 +29,9 @@ jobs:
       - run: npm ci
 
       - name: Ingest iniciativas (openAR)
-        if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' }}
         run: npm run ingest:iniciativas --workspace=pipeline
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # Scoped to the current legislature — fetching full history (27k+
           # records back to the API's start) trips openAR's rate limit.
           # Bump this when a new legislature starts (roughly once every 4 years).
@@ -35,11 +40,9 @@ jobs:
       - name: Ingest votacoes (openAR)
         # Runs after iniciativas — votacoes.iniciativa_id has an FK to
         # iniciativas(id), and a step failure above already halts the job.
-        if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' }}
         run: npm run ingest:votacoes --workspace=pipeline
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           LEGISLATURA: 'XVII'
 
       - name: Resolve canonical parlamento.pt URLs
@@ -47,14 +50,11 @@ jobs:
         # parlamento.pt's own DetalheIniciativa page before it's ever shown
         # to a user as a citation (CLAUDE.md: citations must resolve to the
         # official source, not just openAR).
-        if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' }}
         run: npm run resolve:canonical-urls --workspace=pipeline
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
       - name: Supabase not configured yet
-        if: ${{ secrets.SUPABASE_URL == '' || secrets.SUPABASE_SERVICE_ROLE_KEY == '' }}
+        if: ${{ env.SUPABASE_URL == '' || env.SUPABASE_SERVICE_ROLE_KEY == '' }}
         run: |
           echo "::notice::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY repo secrets are not set, so there's nowhere to write ingested data yet — skipping. See GETTING_STARTED.md Step 11."
 
