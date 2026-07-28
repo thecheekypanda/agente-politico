@@ -8,9 +8,11 @@ import type { Iniciativa } from '../src/schemas/iniciativa.js';
 class FakeIniciativasStore implements IniciativasStore {
   rows = new Map<number, IniciativaRow>();
   upsertCalls = 0;
+  upsertBatchSizes: number[] = [];
 
   async upsert(rows: IniciativaRow[]): Promise<void> {
     this.upsertCalls += 1;
+    this.upsertBatchSizes.push(rows.length);
     for (const row of rows) {
       this.rows.set(row.id, row);
     }
@@ -87,6 +89,23 @@ describe('ingestIniciativas idempotency', () => {
 
     expect(store.rows.size).toBe(1);
     expect(store.rows.get(1)?.titulo).toBe('Segunda');
+  });
+
+  it('never passes a batch containing a duplicate id to the store (Postgres rejects that outright)', async () => {
+    // A real INSERT ... ON CONFLICT DO UPDATE errors with "cannot affect row
+    // a second time" if one statement's VALUES contain the same conflict
+    // key twice — this reproduces the production bug (2026-07-28), where
+    // openAR's offset pagination let the same iniciativa land in one fetch
+    // twice. The in-memory store above would silently tolerate that either
+    // way, so this asserts on the batch size actually passed to upsert().
+    const items = [sampleIniciativa({ id: 1, titulo: 'Primeira' }), sampleIniciativa({ id: 1, titulo: 'Segunda' })];
+    const fetchImpl = async () =>
+      jsonResponse({ data: items, total: 2, page: 1, limit: 200 });
+    const store = new FakeIniciativasStore();
+
+    await ingestIniciativas(store, { fetchImpl });
+
+    expect(store.upsertBatchSizes).toEqual([1]);
   });
 
   it('updated fields from a later run overwrite the stored row instead of adding a new one', async () => {

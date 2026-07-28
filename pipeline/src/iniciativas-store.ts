@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Iniciativa } from './schemas/iniciativa.js';
+import { dedupeByKey } from './dedupe-by-key.js';
 import { type FetchIniciativasOptions, fetchAllIniciativas } from './openar-client.js';
 
 // Column set intentionally excludes `canonical_url` (filled by backlog 1.3)
@@ -67,6 +68,7 @@ export async function ingestIniciativas(
   options: FetchIniciativasOptions = {},
 ): Promise<IngestResult> {
   const iniciativas = await fetchAllIniciativas(options);
-  await store.upsert(iniciativas.map(toIniciativaRow));
+  const deduped = dedupeByKey(iniciativas, (i) => String(i.id));
+  await store.upsert(deduped.map(toIniciativaRow));
   return { fetched: iniciativas.length };
 }

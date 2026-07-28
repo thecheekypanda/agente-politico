@@ -16,9 +16,11 @@ function compositeKey(row: VotacaoRow): string {
 class FakeVotacoesStore implements VotacoesStore {
   rows = new Map<string, VotacaoRow>();
   upsertCalls = 0;
+  upsertBatchSizes: number[] = [];
 
   async upsert(rows: VotacaoRow[]): Promise<void> {
     this.upsertCalls += 1;
+    this.upsertBatchSizes.push(rows.length);
     for (const row of rows) {
       this.rows.set(compositeKey(row), row);
     }
@@ -108,6 +110,21 @@ describe('ingestVotacoes idempotency', () => {
     expect(store.rows.size).toBe(2);
     expect(store.rows.get('100:1')?.resultado).toBe('Aprovado');
     expect(store.rows.get('200:1')?.resultado).toBe('Rejeitado');
+  });
+
+  it('never passes a batch containing a duplicate (iniciativa_id, votacao_id) pair to the store', async () => {
+    // Same class of bug as iniciativas-store: a real Postgres ON CONFLICT DO
+    // UPDATE errors if one statement's VALUES repeat the composite key.
+    const items = [
+      sampleVotacao({ id: '1', iniciativaId: 100, resultado: 'Aprovado' }),
+      sampleVotacao({ id: '1', iniciativaId: 100, resultado: 'Rejeitado' }),
+    ];
+    const fetchImpl = async () => jsonResponse({ data: items, total: 2, page: 1, limit: 200 });
+    const store = new FakeVotacoesStore();
+
+    await ingestVotacoes(store, { fetchImpl });
+
+    expect(store.upsertBatchSizes).toEqual([1]);
   });
 
   it('a later run with an updated resultado overwrites the stored row instead of adding one', async () => {

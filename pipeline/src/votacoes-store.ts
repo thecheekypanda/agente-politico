@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Votacao } from './schemas/votacao.js';
+import { dedupeByKey } from './dedupe-by-key.js';
 import { type FetchVotacoesOptions, fetchAllVotacoes } from './openar-client.js';
 
 // `votacao_id` alone is not unique (openAR's own docs: unique per-initiative
@@ -72,6 +73,7 @@ export async function ingestVotacoes(
   options: FetchVotacoesOptions = {},
 ): Promise<IngestVotacoesResult> {
   const votacoes = await fetchAllVotacoes(options);
-  await store.upsert(votacoes.map(toVotacaoRow));
+  const deduped = dedupeByKey(votacoes, (v) => `${v.iniciativaId}:${v.id}`);
+  await store.upsert(deduped.map(toVotacaoRow));
   return { fetched: votacoes.length };
 }
