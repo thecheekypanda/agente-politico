@@ -4,7 +4,7 @@ Each block below is written to be pasted directly into a GitHub issue (title as 
 
 Legend — Priority: Must / Should / Could (MoSCoW). Size: S / M / L (T-shirt).
 
-**Progress (updated 2026-07-27):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Currently starting Phase 2 (program corpus).
+**Progress (updated 2026-07-27):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Phase 2 (2.1, 2.2) is done — party program PDFs are chunked/indexed with Postgres full-text search, with a "not addressed" default for off-topic or low-confidence retrieval. Next: Phase 3, the alignment engine (highest risk — plan mode first).
 
 ---
 
@@ -61,14 +61,14 @@ Scrape the public DRE portal for new decretos-lei, storing the exact série/núm
 
 ## Phase 2 — Program corpus
 
-### [ ] 2.1 Ingest party program PDFs
+### [x] 2.1 Ingest party program PDFs
 **Priority:** Must · **Size:** M · **Depends on:** 0.1
 
 Load each party's official 2025-cycle program PDF (CNE-lodged version), chunk it, and index it by topic for retrieval.
 
 **Acceptance criteria:** given a party + topic, the system returns the relevant program chunk(s) with page/section reference.
 
-### [ ] 2.2 "Not addressed" default
+### [x] 2.2 "Not addressed" default
 **Priority:** Must · **Size:** S · **Depends on:** 2.1
 
 When retrieval confidence for a party+topic is below a defined threshold, the system must label it "program does not address this" rather than returning a low-confidence guess.
