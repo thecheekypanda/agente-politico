@@ -4,7 +4,7 @@ Each block below is written to be pasted directly into a GitHub issue (title as 
 
 Legend — Priority: Must / Should / Could (MoSCoW). Size: S / M / L (T-shirt).
 
-**Progress (updated 2026-07-27):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Phase 2 (2.1, 2.2) is done — party program PDFs are chunked/indexed with Postgres full-text search, with a "not addressed" default for off-topic or low-confidence retrieval. Next: Phase 3, the alignment engine (highest risk — plan mode first).
+**Progress (updated 2026-07-28):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Phase 2 (2.1, 2.2) is done — party program PDFs are chunked/indexed with Postgres full-text search, with a "not addressed" default for off-topic or low-confidence retrieval. Phase 3 (alignment engine, highest risk) is underway: 3.1 (deterministic type/vote-position classification) is done. Next: 3.2 (closed-list topic-tagging, first LLM step).
 
 ---
 
@@ -79,7 +79,7 @@ When retrieval confidence for a party+topic is below a defined threshold, the sy
 
 ## Phase 3 — Alignment engine (highest risk — use plan mode before coding)
 
-### [ ] 3.1 Deterministic classification
+### [x] 3.1 Deterministic classification
 **Priority:** Must · **Size:** S · **Depends on:** 1.1, 1.2
 
 Classify initiative type and outcome directly from source fields. No LLM involved in this step.
