@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { IniciativaRow, IniciativasStore } from '../src/iniciativas-store.js';
 import {
   ingestVotacoes,
   toVotacaoRow,
@@ -24,6 +25,27 @@ class FakeVotacoesStore implements VotacoesStore {
     for (const row of rows) {
       this.rows.set(compositeKey(row), row);
     }
+  }
+}
+
+// Seed with whatever iniciativa ids a test's votacoes reference so
+// findMissingIds reports nothing missing and the backfill path stays inert
+// — tests that specifically exercise backfill seed a narrower set instead.
+class FakeIniciativasStoreForBackfill implements IniciativasStore {
+  private existingIds: Set<number>;
+  upsertedRows: IniciativaRow[] = [];
+
+  constructor(existingIds: number[] = []) {
+    this.existingIds = new Set(existingIds);
+  }
+
+  async upsert(rows: IniciativaRow[]): Promise<void> {
+    this.upsertedRows.push(...rows);
+    for (const row of rows) this.existingIds.add(row.id);
+  }
+
+  async findMissingIds(ids: number[]): Promise<number[]> {
+    return ids.filter((id) => !this.existingIds.has(id));
   }
 }
 
@@ -84,9 +106,10 @@ describe('ingestVotacoes idempotency', () => {
     ];
     const fetchImpl = async () => jsonResponse({ data: items, total: 2, page: 1, limit: 200 });
     const store = new FakeVotacoesStore();
+    const iniciativasStore = new FakeIniciativasStoreForBackfill([100]);
 
-    const first = await ingestVotacoes(store, { fetchImpl });
-    const second = await ingestVotacoes(store, { fetchImpl });
+    const first = await ingestVotacoes(store, iniciativasStore, { fetchImpl });
+    const second = await ingestVotacoes(store, iniciativasStore, { fetchImpl });
 
     expect(first.fetched).toBe(2);
     expect(second.fetched).toBe(2);
@@ -104,8 +127,9 @@ describe('ingestVotacoes idempotency', () => {
     ];
     const fetchImpl = async () => jsonResponse({ data: items, total: 2, page: 1, limit: 200 });
     const store = new FakeVotacoesStore();
+    const iniciativasStore = new FakeIniciativasStoreForBackfill([100, 200]);
 
-    await ingestVotacoes(store, { fetchImpl });
+    await ingestVotacoes(store, iniciativasStore, { fetchImpl });
 
     expect(store.rows.size).toBe(2);
     expect(store.rows.get('100:1')?.resultado).toBe('Aprovado');
@@ -121,8 +145,9 @@ describe('ingestVotacoes idempotency', () => {
     ];
     const fetchImpl = async () => jsonResponse({ data: items, total: 2, page: 1, limit: 200 });
     const store = new FakeVotacoesStore();
+    const iniciativasStore = new FakeIniciativasStoreForBackfill([100]);
 
-    await ingestVotacoes(store, { fetchImpl });
+    await ingestVotacoes(store, iniciativasStore, { fetchImpl });
 
     expect(store.upsertBatchSizes).toEqual([1]);
   });
@@ -144,10 +169,78 @@ describe('ingestVotacoes idempotency', () => {
         limit: 200,
       });
 
-    await ingestVotacoes(store, { fetchImpl: firstFetch });
-    await ingestVotacoes(store, { fetchImpl: secondFetch });
+    const iniciativasStore = new FakeIniciativasStoreForBackfill([100]);
+    await ingestVotacoes(store, iniciativasStore, { fetchImpl: firstFetch });
+    await ingestVotacoes(store, iniciativasStore, { fetchImpl: secondFetch });
 
     expect(store.rows.size).toBe(1);
     expect(store.rows.get('100:1')?.resultado).toBe('Rejeitado');
+  });
+});
+
+function iniciativaDetailResponse(id: number): Response {
+  return jsonResponse({
+    id,
+    legislaturaId: 'XVII',
+    numero: '99',
+    tipo: 'J',
+    tipoDesc: 'Projeto de Lei',
+    titulo: 'Backfilled iniciativa',
+    epigrafe: null,
+    dataEntrada: '2026-07-28',
+    dataFim: null,
+    estado: 'Entrada',
+    linkTexto: null,
+  });
+}
+
+describe('ingestVotacoes backfills missing iniciativas', () => {
+  it('fetches and stores an iniciativa a votacao references but the store does not have yet', async () => {
+    const votacoesResponse = jsonResponse({
+      data: [sampleVotacao({ id: '1', iniciativaId: 999, resultado: 'Aprovado' })],
+      total: 1,
+      page: 1,
+      limit: 200,
+    });
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/votacoes')) return votacoesResponse;
+      return iniciativaDetailResponse(999);
+    };
+    const votacoesStore = new FakeVotacoesStore();
+    const iniciativasStore = new FakeIniciativasStoreForBackfill([]); // 999 is missing
+
+    await ingestVotacoes(votacoesStore, iniciativasStore, { fetchImpl });
+
+    expect(iniciativasStore.upsertedRows).toHaveLength(1);
+    expect(iniciativasStore.upsertedRows[0].id).toBe(999);
+    expect(votacoesStore.rows.get('999:1')?.resultado).toBe('Aprovado');
+  });
+
+  it('skips votes for an iniciativa that genuinely does not exist (404), without throwing', async () => {
+    const votacoesResponse = jsonResponse({
+      data: [
+        sampleVotacao({ id: '1', iniciativaId: 100, resultado: 'Aprovado' }),
+        sampleVotacao({ id: '2', iniciativaId: 999, resultado: 'Rejeitado' }),
+      ],
+      total: 2,
+      page: 1,
+      limit: 200,
+    });
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/votacoes')) return votacoesResponse;
+      if (url.includes('/iniciativas/999')) return { ok: false, status: 404 } as Response;
+      return iniciativaDetailResponse(100);
+    };
+    const votacoesStore = new FakeVotacoesStore();
+    const iniciativasStore = new FakeIniciativasStoreForBackfill([100]); // 999 is missing and unresolvable
+
+    const result = await ingestVotacoes(votacoesStore, iniciativasStore, { fetchImpl });
+
+    expect(result.fetched).toBe(2); // fetched count reflects what openAR returned, not what got stored
+    expect(votacoesStore.rows.has('100:1')).toBe(true);
+    expect(votacoesStore.rows.has('999:2')).toBe(false);
+    expect(iniciativasStore.upsertedRows).toHaveLength(0);
   });
 });

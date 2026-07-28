@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import { PaginatedIniciativasSchema, type Iniciativa } from './schemas/iniciativa.js';
+import { IniciativaSchema, PaginatedIniciativasSchema, type Iniciativa } from './schemas/iniciativa.js';
 import { PaginatedVotacoesSchema, type Votacao } from './schemas/votacao.js';
 
 const BASE_URL = 'https://api.openar.pt/v1';
@@ -44,6 +44,13 @@ async function fetchAllPaginated<TItem>(
     const url = new URL(`${BASE_URL}${path}`);
     url.searchParams.set('page', String(page));
     url.searchParams.set('limit', String(pageLimit));
+    // Oldest-first: openAR's default (newest-first) means a brand-new
+    // filing gets inserted at the very front, shifting every page we
+    // haven't fetched yet — during a multi-page walk against an actively
+    // updating legislature that silently skips records (observed in
+    // production, 2026-07-28). Ascending order means new filings append
+    // past whatever we've already paginated through instead.
+    url.searchParams.set('sort', 'asc');
     if (legislatura) url.searchParams.set('legislatura', legislatura);
 
     const response = await fetchImpl(url, { headers: { Accept: 'application/json' } });
@@ -94,4 +101,39 @@ export type FetchVotacoesOptions = FetchPaginatedOptions;
 
 export async function fetchAllVotacoes(options: FetchVotacoesOptions = {}): Promise<Votacao[]> {
   return fetchAllPaginated('/votacoes', PaginatedVotacoesSchema, options);
+}
+
+export interface FetchIniciativaByIdOptions {
+  fetchImpl?: typeof fetch;
+}
+
+// Single-record lookup, used to backfill an iniciativa a votacao references
+// that a paginated /iniciativas fetch missed (the sort:asc mitigation above
+// reduces this but can't eliminate it — a vote fetched moments after
+// iniciativas can still reference something filed in between). The detail
+// endpoint returns more fields than the list endpoint (autores, eventos,
+// etc.) but is a verified superset of everything IniciativaSchema needs
+// (confirmed against live data, 2026-07-28) — extra fields are ignored by
+// Zod's default non-strict parsing.
+export async function fetchIniciativaById(
+  id: number,
+  options: FetchIniciativaByIdOptions = {},
+): Promise<Iniciativa | null> {
+  const { fetchImpl = fetch } = options;
+  const response = await fetchImpl(`${BASE_URL}/iniciativas/${id}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(`openAR /iniciativas/${id} request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const body: unknown = await response.json();
+  const parsed = IniciativaSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new Error(`openAR /iniciativas/${id} response did not match the expected schema: ${parsed.error.message}`);
+  }
+  return parsed.data;
 }

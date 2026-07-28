@@ -1,7 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Iniciativa } from './schemas/iniciativa.js';
 import type { Votacao } from './schemas/votacao.js';
 import { dedupeByKey } from './dedupe-by-key.js';
-import { type FetchVotacoesOptions, fetchAllVotacoes } from './openar-client.js';
+import { type IniciativasStore, toIniciativaRow } from './iniciativas-store.js';
+import { type FetchVotacoesOptions, fetchAllVotacoes, fetchIniciativaById } from './openar-client.js';
 
 // `votacao_id` alone is not unique (openAR's own docs: unique per-initiative
 // only) — the real key is the (iniciativa_id, votacao_id) pair, matching the
@@ -68,12 +70,74 @@ export interface IngestVotacoesResult {
   fetched: number;
 }
 
+// Courtesy delay between individual backfill lookups — a burst of dozens of
+// single-record requests right after a full paginated fetch risks tripping
+// openAR's rate limit.
+const BACKFILL_DELAY_MS = 150;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// votacoes.iniciativa_id has an FK to iniciativas(id). Even with
+// fetchAllIniciativas/fetchAllVotacoes both paginating oldest-first now
+// (openar-client.ts), a votacao fetched moments after iniciativas can still
+// reference something filed in the gap between the two steps — an
+// unavoidable race against an actively updating legislature, not a
+// pagination bug. Rather than let that FK violation abort the whole batch
+// (observed in production, 2026-07-28), fetch and upsert exactly the
+// missing iniciativas first. A referenced id that genuinely 404s (rare —
+// none observed so far) is logged and its votes are skipped this run rather
+// than fabricated or allowed to crash everything else; it'll be retried
+// automatically next run since it stays unresolved either way.
+async function backfillMissingIniciativas(
+  iniciativasStore: IniciativasStore,
+  referencedIds: number[],
+  fetchImpl?: typeof fetch,
+): Promise<Set<number>> {
+  const missingIds = await iniciativasStore.findMissingIds(referencedIds);
+  if (missingIds.length === 0) {
+    return new Set();
+  }
+
+  const backfilled: Iniciativa[] = [];
+  const unresolvable = new Set<number>();
+  for (const id of missingIds) {
+    const iniciativa = await fetchIniciativaById(id, { fetchImpl });
+    if (iniciativa) {
+      backfilled.push(iniciativa);
+    } else {
+      console.warn(
+        `votacoes reference iniciativa ${id}, but openAR has no record of it (404) — skipping its votes this run.`,
+      );
+      unresolvable.add(id);
+    }
+    await sleep(BACKFILL_DELAY_MS);
+  }
+
+  if (backfilled.length > 0) {
+    await iniciativasStore.upsert(backfilled.map(toIniciativaRow));
+  }
+  return unresolvable;
+}
+
 export async function ingestVotacoes(
-  store: VotacoesStore,
+  votacoesStore: VotacoesStore,
+  iniciativasStore: IniciativasStore,
   options: FetchVotacoesOptions = {},
 ): Promise<IngestVotacoesResult> {
   const votacoes = await fetchAllVotacoes(options);
   const deduped = dedupeByKey(votacoes, (v) => `${v.iniciativaId}:${v.id}`);
-  await store.upsert(deduped.map(toVotacaoRow));
+
+  const referencedIds = [...new Set(deduped.map((v) => v.iniciativaId))];
+  const unresolvable = await backfillMissingIniciativas(
+    iniciativasStore,
+    referencedIds,
+    options.fetchImpl,
+  );
+
+  const ingestable =
+    unresolvable.size > 0 ? deduped.filter((v) => !unresolvable.has(v.iniciativaId)) : deduped;
+  await votacoesStore.upsert(ingestable.map(toVotacaoRow));
   return { fetched: votacoes.length };
 }

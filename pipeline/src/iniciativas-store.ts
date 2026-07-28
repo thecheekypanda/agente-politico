@@ -41,6 +41,8 @@ export function toIniciativaRow(iniciativa: Iniciativa): IniciativaRow {
 
 export interface IniciativasStore {
   upsert(rows: IniciativaRow[]): Promise<void>;
+  /** Returns whichever of the given ids do NOT already exist in the table. */
+  findMissingIds(ids: number[]): Promise<number[]>;
 }
 
 const UPSERT_BATCH_SIZE = 500;
@@ -56,6 +58,18 @@ export class SupabaseIniciativasStore implements IniciativasStore {
         throw new Error(`Failed to upsert iniciativas (batch starting at ${i}): ${error.message}`);
       }
     }
+  }
+
+  async findMissingIds(ids: number[]): Promise<number[]> {
+    if (ids.length === 0) return [];
+
+    const { data, error } = await this.client.from('iniciativas').select('id').in('id', ids);
+    if (error) {
+      throw new Error(`Failed to check for existing iniciativas: ${error.message}`);
+    }
+
+    const existing = new Set((data ?? []).map((row) => row.id as number));
+    return ids.filter((id) => !existing.has(id));
   }
 }
 

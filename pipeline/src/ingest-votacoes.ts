@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { SupabaseIniciativasStore } from './iniciativas-store.js';
 import { ingestVotacoes, SupabaseVotacoesStore } from './votacoes-store.js';
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -11,7 +12,10 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const client = createClient(supabaseUrl, supabaseKey);
-const store = new SupabaseVotacoesStore(client);
+const votacoesStore = new SupabaseVotacoesStore(client);
+const iniciativasStore = new SupabaseIniciativasStore(client);
 
-const result = await ingestVotacoes(store, { legislatura: process.env.LEGISLATURA });
+const result = await ingestVotacoes(votacoesStore, iniciativasStore, {
+  legislatura: process.env.LEGISLATURA,
+});
 console.log(`Ingested ${result.fetched} votacoes.`);

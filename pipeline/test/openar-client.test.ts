@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fetchAllIniciativas } from '../src/openar-client.js';
+import { fetchAllIniciativas, fetchIniciativaById } from '../src/openar-client.js';
 import type { Iniciativa } from '../src/schemas/iniciativa.js';
 
 function sampleIniciativa(overrides: Partial<Iniciativa> = {}): Iniciativa {
@@ -85,5 +85,50 @@ describe('fetchAllIniciativas', () => {
     const result = await fetchAllIniciativas({ fetchImpl, allowEmpty: true });
 
     expect(result).toEqual([]);
+  });
+
+  it('requests results oldest-first, so new filings append past already-paginated pages', async () => {
+    // Regression coverage for the production bug (2026-07-28): openAR's
+    // default newest-first sort let a new filing shift every unfetched
+    // page during a multi-page walk, silently skipping records.
+    let requestedSort: string | null = null;
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      requestedSort = new URL(input as string).searchParams.get('sort');
+      return jsonResponse({ data: [sampleIniciativa()], total: 1, page: 1, limit: 200 });
+    };
+
+    await fetchAllIniciativas({ fetchImpl });
+
+    expect(requestedSort).toBe('asc');
+  });
+});
+
+describe('fetchIniciativaById', () => {
+  it('fetches and validates a single iniciativa', async () => {
+    const fetchImpl = async () => jsonResponse(sampleIniciativa({ id: 42 }));
+
+    const result = await fetchIniciativaById(42, { fetchImpl });
+
+    expect(result?.id).toBe(42);
+  });
+
+  it('returns null on a 404 instead of throwing', async () => {
+    const fetchImpl = async () => jsonResponse({}, false, 404);
+
+    const result = await fetchIniciativaById(999, { fetchImpl });
+
+    expect(result).toBeNull();
+  });
+
+  it('throws on a non-404 error response', async () => {
+    const fetchImpl = async () => jsonResponse({}, false, 500);
+
+    await expect(fetchIniciativaById(1, { fetchImpl })).rejects.toThrow(/500/);
+  });
+
+  it('throws when the response does not match the expected schema', async () => {
+    const fetchImpl = async () => jsonResponse({ id: 1 }); // missing required fields
+
+    await expect(fetchIniciativaById(1, { fetchImpl })).rejects.toThrow(/schema/i);
   });
 });

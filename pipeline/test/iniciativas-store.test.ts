@@ -17,6 +17,10 @@ class FakeIniciativasStore implements IniciativasStore {
       this.rows.set(row.id, row);
     }
   }
+
+  async findMissingIds(ids: number[]): Promise<number[]> {
+    return ids.filter((id) => !this.rows.has(id));
+  }
 }
 
 function sampleIniciativa(overrides: Partial<Iniciativa> = {}): Iniciativa {
