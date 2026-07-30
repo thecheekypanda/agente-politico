@@ -4,6 +4,7 @@ import type { Votacao } from './schemas/votacao.js';
 import { dedupeByKey } from './dedupe-by-key.js';
 import { type IniciativasStore, toIniciativaRow } from './iniciativas-store.js';
 import { type FetchVotacoesOptions, fetchAllVotacoes, fetchIniciativaById } from './openar-client.js';
+import { sleep } from './sleep.js';
 
 // `votacao_id` alone is not unique (openAR's own docs: unique per-initiative
 // only) — the real key is the (iniciativa_id, votacao_id) pair, matching the
@@ -74,10 +75,6 @@ export interface IngestVotacoesResult {
 // single-record requests right after a full paginated fetch risks tripping
 // openAR's rate limit.
 const BACKFILL_DELAY_MS = 150;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 // votacoes.iniciativa_id has an FK to iniciativas(id). Even with
 // fetchAllIniciativas/fetchAllVotacoes both paginating oldest-first now

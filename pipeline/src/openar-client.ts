@@ -1,9 +1,40 @@
 import type { z } from 'zod';
 import { IniciativaSchema, PaginatedIniciativasSchema, type Iniciativa } from './schemas/iniciativa.js';
 import { PaginatedVotacoesSchema, type Votacao } from './schemas/votacao.js';
+import { sleep } from './sleep.js';
 
 const BASE_URL = 'https://api.openar.pt/v1';
 const DEFAULT_PAGE_LIMIT = 200; // openAR's documented maximum for `limit`
+
+// openAR enforces a real rate limit (confirmed live: X-RateLimit-Limit: 100,
+// with a Retry-After header on 429s) — a single ingestion run's combined
+// iniciativas + votacoes pagination plus backfill lookups can trip it
+// (observed in production, 2026-07-30). Every openAR request goes through
+// this so a rate limit is a transient retry, not a hard failure — honoring
+// the server's own Retry-After rather than guessing a delay. Gives up after
+// a bounded number of attempts rather than retrying forever if openAR is
+// genuinely down.
+const MAX_RATE_LIMIT_RETRIES = 3;
+const FALLBACK_RETRY_DELAY_MS = 2000;
+
+async function fetchOpenAR(fetchImpl: typeof fetch, input: string | URL): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetchImpl(input, { headers: { Accept: 'application/json' } });
+    if (response.status !== 429 || attempt >= MAX_RATE_LIMIT_RETRIES) {
+      return response;
+    }
+
+    const retryAfterSeconds = Number(response.headers.get('Retry-After'));
+    const waitMs = Number.isFinite(retryAfterSeconds)
+      ? retryAfterSeconds * 1000
+      : FALLBACK_RETRY_DELAY_MS * 2 ** attempt;
+
+    console.warn(
+      `openAR rate limit hit (429) for ${input} — retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/${MAX_RATE_LIMIT_RETRIES})`,
+    );
+    await sleep(waitMs);
+  }
+}
 
 export interface FetchPaginatedOptions {
   legislatura?: string;
@@ -53,7 +84,7 @@ async function fetchAllPaginated<TItem>(
     url.searchParams.set('sort', 'asc');
     if (legislatura) url.searchParams.set('legislatura', legislatura);
 
-    const response = await fetchImpl(url, { headers: { Accept: 'application/json' } });
+    const response = await fetchOpenAR(fetchImpl, url);
     if (!response.ok) {
       throw new Error(
         `openAR ${path} request failed: ${response.status} ${response.statusText} (page ${page})`,
@@ -120,9 +151,7 @@ export async function fetchIniciativaById(
   options: FetchIniciativaByIdOptions = {},
 ): Promise<Iniciativa | null> {
   const { fetchImpl = fetch } = options;
-  const response = await fetchImpl(`${BASE_URL}/iniciativas/${id}`, {
-    headers: { Accept: 'application/json' },
-  });
+  const response = await fetchOpenAR(fetchImpl, `${BASE_URL}/iniciativas/${id}`);
   if (response.status === 404) {
     return null;
   }

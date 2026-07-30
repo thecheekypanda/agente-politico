@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { type VerifyCanonicalUrlOptions, verifyCanonicalUrl } from './parlamento-client.js';
+import { sleep } from './sleep.js';
 
 export interface UnresolvedIniciativa {
   id: number;
@@ -51,10 +52,6 @@ export interface ResolveCanonicalUrlsResult {
   attempted: number;
   resolved: number;
   unresolved: number;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function resolveCanonicalUrls(

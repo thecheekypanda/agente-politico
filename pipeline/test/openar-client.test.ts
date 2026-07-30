@@ -28,6 +28,16 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
   } as Response;
 }
 
+function rateLimitedResponse(retryAfterSeconds = '0'): Response {
+  return {
+    ok: false,
+    status: 429,
+    statusText: 'Too Many Requests',
+    headers: new Headers({ 'Retry-After': retryAfterSeconds }),
+    json: async () => ({ error: 'Too many requests' }),
+  } as Response;
+}
+
 describe('fetchAllIniciativas', () => {
   it('parses a single page of valid data', async () => {
     const items = [sampleIniciativa({ id: 1 }), sampleIniciativa({ id: 2 })];
@@ -101,6 +111,33 @@ describe('fetchAllIniciativas', () => {
 
     expect(requestedSort).toBe('asc');
   });
+
+  it('retries a rate-limited (429) request and succeeds once openAR stops limiting', async () => {
+    // Regression coverage for production (2026-07-30): a single ingestion
+    // run's combined request volume tripped openAR's real rate limit.
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      if (calls === 1) return rateLimitedResponse('0');
+      return jsonResponse({ data: [sampleIniciativa()], total: 1, page: 1, limit: 200 });
+    };
+
+    const result = await fetchAllIniciativas({ fetchImpl });
+
+    expect(calls).toBe(2);
+    expect(result).toHaveLength(1);
+  });
+
+  it('gives up and throws after repeated 429s instead of retrying forever', async () => {
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      return rateLimitedResponse('0');
+    };
+
+    await expect(fetchAllIniciativas({ fetchImpl })).rejects.toThrow(/429/);
+    expect(calls).toBe(4); // initial attempt + 3 retries
+  });
 });
 
 describe('fetchIniciativaById', () => {
@@ -130,5 +167,19 @@ describe('fetchIniciativaById', () => {
     const fetchImpl = async () => jsonResponse({ id: 1 }); // missing required fields
 
     await expect(fetchIniciativaById(1, { fetchImpl })).rejects.toThrow(/schema/i);
+  });
+
+  it('retries a rate-limited (429) request', async () => {
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      if (calls === 1) return rateLimitedResponse('0');
+      return jsonResponse(sampleIniciativa({ id: 42 }));
+    };
+
+    const result = await fetchIniciativaById(42, { fetchImpl });
+
+    expect(calls).toBe(2);
+    expect(result?.id).toBe(42);
   });
 });
