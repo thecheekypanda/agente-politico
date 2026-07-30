@@ -20,6 +20,7 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -53,10 +54,23 @@ jobs:
         if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' }}
         run: npm run resolve:canonical-urls --workspace=pipeline
 
+      - name: Tag topics (Claude Haiku 4.5 batch)
+        # Reads iniciativas the earlier steps already wrote — runs after
+        # them so there's something to tag. Closed-list topic-tagging per
+        # CLAUDE.md/backlog 3.2; the model is structurally constrained to
+        # the fixed list via output_config.format, not just prompted.
+        if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' && env.ANTHROPIC_API_KEY != '' }}
+        run: npm run ingest:topics --workspace=pipeline
+
       - name: Supabase not configured yet
         if: ${{ env.SUPABASE_URL == '' || env.SUPABASE_SERVICE_ROLE_KEY == '' }}
         run: |
           echo "::notice::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY repo secrets are not set, so there's nowhere to write ingested data yet — skipping. See GETTING_STARTED.md Step 11."
+
+      - name: Anthropic API key not configured yet
+        if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' && env.ANTHROPIC_API_KEY == '' }}
+        run: |
+          echo "::notice::ANTHROPIC_API_KEY repo secret is not set, so there's no topic-tagging to do yet — skipping. See GETTING_STARTED.md."
 
       # Every ingestion step above fails loudly on a bad HTTP status, a
       # schema mismatch, or an unexpectedly empty payload (see

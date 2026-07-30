@@ -154,6 +154,7 @@ Another account-level step only you can do. Until this is done, the nightly inge
    - `20260727010000_votacoes.sql`
    - `20260727020000_iniciativas_canonical_url_index.sql`
    - `20260727030000_party_programs.sql`
+   - `20260730000000_iniciativas_topic.sql`
 
    Run any new migration files the same way as they're added.
 4. Get your credentials: **Project Settings** (gear icon) → **API**.
@@ -168,6 +169,15 @@ Another account-level step only you can do. Until this is done, the nightly inge
    Then run `npx tsx --env-file=.env pipeline/src/ingest-iniciativas.ts` from the repo root, or trigger the workflow manually from GitHub's **Actions** tab → **Ingestion** → **Run workflow** once the secrets are set.
 7. **Party program PDFs are a separate workflow, not part of the daily cron.** Once secrets are set, go to **Actions** → **Ingest party programs** → **Run workflow** — this one only needs running once per election cycle (or whenever a program is formally revised), not daily.
 8. To confirm it actually worked: in Supabase, **Table Editor** in the left sidebar → check `iniciativas` and `votacoes` have rows after step 6/the Ingestion workflow, and `party_programs`/`program_chunks` have rows after step 7.
+
+## Step 12 — Add your Anthropic API key (needed for backlog 3.2+)
+
+The topic-tagging step (and later the alignment engine) calls the Claude API. Until this is set, that one step in the Ingestion workflow skips itself with a notice — the rest of ingestion works fine without it.
+
+1. Get a key from the [Anthropic Console](https://console.anthropic.com) → **API Keys** → **Create Key**.
+2. Add it as a GitHub Actions secret the same way as the Supabase ones: repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret** → name it `ANTHROPIC_API_KEY`.
+3. (Optional, for local testing) add it to your `.env` file alongside the Supabase values, then run `npx tsx --env-file=.env pipeline/src/ingest-topics.ts`.
+4. To confirm it worked: check the `topic` column on rows in the `iniciativas` table in Supabase's Table Editor.
 
 ## A few habits worth keeping
 

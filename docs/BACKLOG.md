@@ -4,7 +4,7 @@ Each block below is written to be pasted directly into a GitHub issue (title as 
 
 Legend — Priority: Must / Should / Could (MoSCoW). Size: S / M / L (T-shirt).
 
-**Progress (updated 2026-07-28):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Phase 2 (2.1, 2.2) is done — party program PDFs are chunked/indexed with Postgres full-text search, with a "not addressed" default for off-topic or low-confidence retrieval. Phase 3 (alignment engine, highest risk) is underway: 3.1 (deterministic type/vote-position classification) is done. Next: 3.2 (closed-list topic-tagging, first LLM step).
+**Progress (updated 2026-07-30):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Phase 2 (2.1, 2.2) is done — party program PDFs are chunked/indexed with Postgres full-text search, with a "not addressed" default for off-topic or low-confidence retrieval. Phase 3 (alignment engine, highest risk) is underway: 3.1 (deterministic type/vote-position classification) and 3.2 (closed-list topic-tagging via Claude Haiku 4.5 Batch API, structurally constrained to a fixed ~29-topic list) are done. Next: 3.3 (verdict drafting, Size L — the identical-prompt-per-party constraint).
 
 ---
 
@@ -84,7 +84,7 @@ When retrieval confidence for a party+topic is below a defined threshold, the sy
 
 Classify initiative type and outcome directly from source fields. No LLM involved in this step.
 
-### [ ] 3.2 Closed-list topic-tagging
+### [x] 3.2 Closed-list topic-tagging
 **Priority:** Must · **Size:** M · **Depends on:** 1.1
 
 LLM assigns each initiative to one topic from a fixed list of ~20–30 (habitação, saúde, fiscalidade, etc.). The model may only pick from the list — never invent a topic.
