@@ -16,13 +16,34 @@ const title = 'O Que Fizeram';
         de cada partido. Cada etiqueta abaixo já foi revista e aprovada por um humano — nada aqui
         é publicado diretamente por um modelo de IA. Ver a <a href="/methodology">metodologia</a>.
       </p>
+      <form id="filters" hidden>
+        <fieldset>
+          <legend>Partidos</legend>
+          <div id="party-checkboxes"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Semana</legend>
+          <label for="from-week">De</label>
+          <input type="date" id="from-week" name="from-week" />
+          <label for="to-week">Até</label>
+          <input type="date" id="to-week" name="to-week" />
+        </fieldset>
+        <button id="clear-filters" type="button">Limpar filtros</button>
+      </form>
       <p id="digest-status" role="status">A carregar...</p>
       <div id="digest"></div>
     </main>
 
     <script>
       import { supabase } from '../lib/supabase-client';
-      import { groupDigestItems, rowToDigestItem, type DigestCard, type DigestItem } from '../lib/digest';
+      import {
+        filterDigestRows,
+        groupDigestItems,
+        rowToDigestItem,
+        type DigestCard,
+        type DigestItem,
+        type DigestRow,
+      } from '../lib/digest';
       import { derivePartyVotePosition, rowToVotacao, type VotacaoRow } from '../lib/votes';
 
       const LABEL_NAMES: Record<string, string> = {
@@ -42,6 +63,16 @@ const title = 'O Que Fizeram';
 
       const digestEl = document.getElementById('digest') as HTMLElement;
       const statusEl = document.getElementById('digest-status') as HTMLElement;
+      const filtersEl = document.getElementById('filters') as HTMLElement;
+      const partyCheckboxesEl = document.getElementById('party-checkboxes') as HTMLElement;
+      const fromWeekInput = document.getElementById('from-week') as HTMLInputElement;
+      const toWeekInput = document.getElementById('to-week') as HTMLInputElement;
+      const clearFiltersButton = document.getElementById('clear-filters') as HTMLButtonElement;
+
+      // Populated once after the initial fetch; filtering/re-rendering
+      // below never refetches — backlog 4.3 is purely a client-side view
+      // over the data public_digest already returned once.
+      let allRows: DigestRow[] = [];
 
       function formatDate(date: string): string {
         return new Date(`${date}T00:00:00Z`).toLocaleDateString('pt-PT', {
@@ -218,6 +249,67 @@ const title = 'O Que Fizeram';
         return article;
       }
 
+      function buildPartyCheckboxes(rows: DigestRow[]) {
+        // Only parties actually present in the fetched data get a
+        // checkbox — never an empty option for a party with zero approved
+        // verdicts yet.
+        const parties = new Map<string, string>();
+        for (const row of rows) {
+          parties.set(row.partyLabel, row.partyName);
+        }
+
+        partyCheckboxesEl.replaceChildren();
+        for (const [label, name] of parties) {
+          const wrapper = document.createElement('label');
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = label;
+          checkbox.checked = true;
+          checkbox.addEventListener('change', render);
+          wrapper.appendChild(checkbox);
+          wrapper.appendChild(document.createTextNode(` ${name}`));
+          partyCheckboxesEl.appendChild(wrapper);
+        }
+      }
+
+      function selectedPartyLabels(): Set<string> {
+        const checked = partyCheckboxesEl.querySelectorAll('input[type="checkbox"]:checked');
+        return new Set([...checked].map((el) => (el as HTMLInputElement).value));
+      }
+
+      function render() {
+        const filtered = filterDigestRows(allRows, {
+          partyLabels: selectedPartyLabels(),
+          fromWeek: fromWeekInput.value || undefined,
+          toWeek: toWeekInput.value || undefined,
+        });
+        const cards = groupDigestItems(filtered);
+
+        digestEl.replaceChildren();
+        if (cards.length === 0) {
+          statusEl.textContent =
+            allRows.length === 0
+              ? 'Ainda não há veredictos aprovados publicados.'
+              : 'Nenhum resultado para estes filtros.';
+          return;
+        }
+        statusEl.textContent = '';
+        for (const card of cards) {
+          digestEl.appendChild(renderCard(card));
+        }
+      }
+
+      clearFiltersButton.addEventListener('click', () => {
+        for (const checkbox of partyCheckboxesEl.querySelectorAll('input[type="checkbox"]')) {
+          (checkbox as HTMLInputElement).checked = true;
+        }
+        fromWeekInput.value = '';
+        toWeekInput.value = '';
+        render();
+      });
+      fromWeekInput.addEventListener('change', render);
+      toWeekInput.addEventListener('change', render);
+
       async function loadDigest() {
         const { data, error } = await supabase
           .from('public_digest')
@@ -230,18 +322,12 @@ const title = 'O Que Fizeram';
           return;
         }
 
-        const rows = (data ?? []).map(rowToDigestItem);
-        const cards = groupDigestItems(rows);
-
-        digestEl.replaceChildren();
-        if (cards.length === 0) {
-          statusEl.textContent = 'Ainda não há veredictos aprovados publicados.';
-          return;
+        allRows = (data ?? []).map(rowToDigestItem);
+        if (allRows.length > 0) {
+          filtersEl.hidden = false;
+          buildPartyCheckboxes(allRows);
         }
-        statusEl.textContent = '';
-        for (const card of cards) {
-          digestEl.appendChild(renderCard(card));
-        }
+        render();
       }
 
       await loadDigest();

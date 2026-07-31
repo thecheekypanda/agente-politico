@@ -28,11 +28,13 @@ export interface DigestCard {
   items: DigestItem[];
 }
 
-export function rowToDigestItem(row: Record<string, unknown>): DigestItem & {
+export type DigestRow = DigestItem & {
   weekStart: string;
   partyLabel: string;
   partyName: string;
-} {
+};
+
+export function rowToDigestItem(row: Record<string, unknown>): DigestRow {
   return {
     verdictId: row.verdict_id as number,
     iniciativaId: row.iniciativa_id as number,
@@ -55,13 +57,39 @@ export function rowToDigestItem(row: Record<string, unknown>): DigestItem & {
   };
 }
 
+export interface DigestFilters {
+  // undefined or empty = no party filter (show every party).
+  partyLabels?: Set<string>;
+  fromWeek?: string; // inclusive, 'YYYY-MM-DD'
+  toWeek?: string; // inclusive, 'YYYY-MM-DD'
+}
+
+// Filters the flat rows fetched from public_digest, before grouping —
+// backlog 4.3. Purely client-side over data already fetched once; no
+// refetch, no new Supabase query params. Lexical comparison on the
+// ISO-formatted weekStart string is sufficient for the range check, same
+// as groupDigestItems' own sort below.
+export function filterDigestRows(rows: DigestRow[], filters: DigestFilters = {}): DigestRow[] {
+  const { partyLabels, fromWeek, toWeek } = filters;
+  return rows.filter((row) => {
+    if (partyLabels && partyLabels.size > 0 && !partyLabels.has(row.partyLabel)) {
+      return false;
+    }
+    if (fromWeek && row.weekStart < fromWeek) {
+      return false;
+    }
+    if (toWeek && row.weekStart > toWeek) {
+      return false;
+    }
+    return true;
+  });
+}
+
 // Groups flat public_digest rows into one card per (weekStart, partyLabel),
 // most-recent-week-first — "one card per party per week" (backlog 4.1). No
 // LLM step here: the card is a deterministic grouping of already-approved,
 // already-human-reviewed content, never freshly synthesized prose.
-export function groupDigestItems(
-  rows: ReturnType<typeof rowToDigestItem>[],
-): DigestCard[] {
+export function groupDigestItems(rows: DigestRow[]): DigestCard[] {
   const cards = new Map<string, DigestCard>();
 
   for (const row of rows) {

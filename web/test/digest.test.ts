@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupDigestItems, rowToDigestItem } from '../src/lib/digest';
+import { filterDigestRows, groupDigestItems, rowToDigestItem } from '../src/lib/digest';
 
 function row(overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
   return {
@@ -103,5 +103,45 @@ describe('groupDigestItems', () => {
 
   it('returns no cards for no rows', () => {
     expect(groupDigestItems([])).toEqual([]);
+  });
+});
+
+describe('filterDigestRows', () => {
+  const rows = [
+    row({ verdict_id: 1, party_label: 'PS', week_start: '2026-07-20' }),
+    row({ verdict_id: 2, party_label: 'CH', week_start: '2026-07-27' }),
+    row({ verdict_id: 3, party_label: 'PS', week_start: '2026-08-03' }),
+  ].map(rowToDigestItem);
+
+  it('returns every row unchanged when no filters are given', () => {
+    expect(filterDigestRows(rows)).toEqual(rows);
+    expect(filterDigestRows(rows, {})).toEqual(rows);
+  });
+
+  it('filters to only the selected parties', () => {
+    const result = filterDigestRows(rows, { partyLabels: new Set(['PS']) });
+
+    expect(result.map((r) => r.verdictId)).toEqual([1, 3]);
+  });
+
+  it('treats an empty party set the same as no party filter', () => {
+    expect(filterDigestRows(rows, { partyLabels: new Set() })).toEqual(rows);
+  });
+
+  it('filters to a week range, inclusive on both ends', () => {
+    const result = filterDigestRows(rows, { fromWeek: '2026-07-27', toWeek: '2026-07-27' });
+
+    expect(result.map((r) => r.verdictId)).toEqual([2]);
+  });
+
+  it('excludes rows outside an open-ended range', () => {
+    expect(filterDigestRows(rows, { fromWeek: '2026-07-27' }).map((r) => r.verdictId)).toEqual([2, 3]);
+    expect(filterDigestRows(rows, { toWeek: '2026-07-27' }).map((r) => r.verdictId)).toEqual([1, 2]);
+  });
+
+  it('combines party and date filters', () => {
+    const result = filterDigestRows(rows, { partyLabels: new Set(['PS']), fromWeek: '2026-08-01' });
+
+    expect(result.map((r) => r.verdictId)).toEqual([3]);
   });
 });
