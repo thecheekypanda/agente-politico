@@ -11,8 +11,99 @@ const title = 'O Que Fizeram';
   <body>
     <main>
       <h1>{title}</h1>
-      <p>Em construção. Resumos semanais da atividade parlamentar portuguesa, em breve.</p>
-      <p><a href="/methodology">Metodologia</a></p>
+      <p>
+        Resumos semanais da atividade parlamentar portuguesa, comparada com o programa eleitoral
+        de cada partido. Cada etiqueta abaixo já foi revista e aprovada por um humano — nada aqui
+        é publicado diretamente por um modelo de IA. Ver a <a href="/methodology">metodologia</a>.
+      </p>
+      <p id="digest-status" role="status">A carregar...</p>
+      <div id="digest"></div>
     </main>
+
+    <script>
+      import { supabase } from '../lib/supabase-client';
+      import { groupDigestItems, rowToDigestItem, type DigestCard } from '../lib/digest';
+
+      const LABEL_NAMES: Record<string, string> = {
+        aligned: 'Alinhado',
+        partially_aligned: 'Parcialmente alinhado',
+        contradicts: 'Contradiz',
+        not_addressed: 'Não abordado no programa',
+      };
+
+      const digestEl = document.getElementById('digest') as HTMLElement;
+      const statusEl = document.getElementById('digest-status') as HTMLElement;
+
+      function formatWeek(weekStart: string): string {
+        const start = new Date(`${weekStart}T00:00:00Z`);
+        const end = new Date(start);
+        end.setUTCDate(end.getUTCDate() + 6);
+        const fmt = (d: Date) => d.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
+        return `${fmt(start)} – ${fmt(end)}`;
+      }
+
+      function renderCard(card: DigestCard): HTMLElement {
+        const article = document.createElement('article');
+
+        const heading = document.createElement('h2');
+        heading.textContent = `${card.partyName} — semana de ${formatWeek(card.weekStart)}`;
+        article.appendChild(heading);
+
+        const list = document.createElement('ul');
+        for (const item of card.items) {
+          const li = document.createElement('li');
+
+          const labelChip = document.createElement('strong');
+          labelChip.textContent = LABEL_NAMES[item.label] ?? item.label;
+          li.appendChild(labelChip);
+          li.appendChild(document.createTextNode(' — '));
+
+          if (item.canonicalUrl) {
+            const link = document.createElement('a');
+            link.href = item.canonicalUrl;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = item.titulo;
+            li.appendChild(link);
+          } else {
+            li.appendChild(document.createTextNode(item.titulo));
+          }
+
+          li.appendChild(document.createTextNode(` (${item.tipoDesc} · ${item.topic})`));
+          list.appendChild(li);
+        }
+        article.appendChild(list);
+
+        return article;
+      }
+
+      async function loadDigest() {
+        const { data, error } = await supabase
+          .from('public_digest')
+          .select('*')
+          .order('week_start', { ascending: false })
+          .limit(200);
+
+        if (error) {
+          statusEl.textContent = `Erro ao carregar o resumo: ${error.message}`;
+          return;
+        }
+
+        const rows = (data ?? []).map(rowToDigestItem);
+        const cards = groupDigestItems(rows);
+
+        digestEl.replaceChildren();
+        if (cards.length === 0) {
+          statusEl.textContent = 'Ainda não há veredictos aprovados publicados.';
+          return;
+        }
+        statusEl.textContent = '';
+        for (const card of cards) {
+          digestEl.appendChild(renderCard(card));
+        }
+      }
+
+      await loadDigest();
+    </script>
   </body>
 </html>

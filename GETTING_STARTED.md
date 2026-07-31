@@ -157,6 +157,7 @@ Another account-level step only you can do. Until this is done, the nightly inge
    - `20260730000000_iniciativas_topic.sql`
    - `20260731000000_verdicts.sql`
    - `20260801000000_verdict_reviews.sql`
+   - `20260802000000_public_digest.sql`
 
    Run any new migration files the same way as they're added.
 4. Get your credentials: **Project Settings** (gear icon) → **API**.
@@ -194,6 +195,10 @@ Every draft verdict needs a signed-in human to approve, edit, or reject it befor
    ```
 4. Run `npm run dev --workspace=web` and open `http://localhost:4321/review`. Sign in with a reviewer's email (a magic link is emailed by Supabase Auth), then follow the link back to the same page.
 5. To confirm it worked: after 3.3 has drafted at least one verdict, it should show up in the queue at `/review` with the initiative, the citation, the program passage, and the draft label — approving or rejecting it should make it disappear from the queue and appear as a row in the `verdict_reviews` table in Supabase's Table Editor.
+
+## Step 14 — Nothing extra needed for the public homepage (backlog 4.1+)
+
+The homepage at `/` uses the same `PUBLIC_SUPABASE_URL` / `PUBLIC_SUPABASE_ANON_KEY` from Step 13 — no new setup. It shows one card per party per week, built only from verdicts a reviewer has approved at `/review`; nothing else is ever readable by a visitor. To confirm it worked: approve at least one verdict, then reload `/` — a card for that party and the initiative's own week should appear, and rejected/pending verdicts should never show up there no matter how long you wait.
 
 ## A few habits worth keeping
 
