@@ -1,0 +1,28 @@
+---
+import { EXPLAINERS } from '../../content/explainers';
+
+export function getStaticPaths() {
+  return EXPLAINERS.map((explainer) => ({
+    params: { slug: explainer.slug },
+    props: { explainer },
+  }));
+}
+
+const { explainer } = Astro.props;
+const title = `${explainer.title} — O Que Fizeram`;
+---
+
+<html lang="pt-PT">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <main>
+      <p><a href="/explicadores">← Todos os explicadores</a></p>
+      <h1>{explainer.title}</h1>
+      {explainer.body.map((paragraph) => <p>{paragraph}</p>)}
+    </main>
+  </body>
+</html>

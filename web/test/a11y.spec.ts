@@ -14,6 +14,27 @@ test.describe('accessibility', () => {
     expect(results.violations).toEqual([]);
   });
 
+  test('glossary page has no WCAG 2.1 AA violations', async ({ page }) => {
+    await page.goto('/glossario');
+
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test('explainers index has no WCAG 2.1 AA violations', async ({ page }) => {
+    await page.goto('/explicadores');
+
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test('an explainer detail page has no WCAG 2.1 AA violations', async ({ page }) => {
+    await page.goto('/explicadores/como-nasce-uma-lei');
+
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
   test('review page (signed out) has no WCAG 2.1 AA violations', async ({ page }) => {
     await page.goto('/review');
     await expect(page.locator('#signed-out')).toBeVisible();

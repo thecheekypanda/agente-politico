@@ -14,7 +14,8 @@ const title = 'O Que Fizeram';
       <p>
         Resumos semanais da atividade parlamentar portuguesa, comparada com o programa eleitoral
         de cada partido. Cada etiqueta abaixo já foi revista e aprovada por um humano — nada aqui
-        é publicado diretamente por um modelo de IA. Ver a <a href="/methodology">metodologia</a>.
+        é publicado diretamente por um modelo de IA. Ver a <a href="/methodology">metodologia</a>,
+        o <a href="/glossario">glossário</a> ou os <a href="/explicadores">explicadores</a>.
       </p>
       <form id="filters" hidden>
         <fieldset>
@@ -45,6 +46,7 @@ const title = 'O Que Fizeram';
         type DigestRow,
       } from '../lib/digest';
       import { derivePartyVotePosition, rowToVotacao, type VotacaoRow } from '../lib/votes';
+      import { findGlossaryTerm } from '../lib/glossary';
 
       const LABEL_NAMES: Record<string, string> = {
         aligned: 'Alinhado',
@@ -80,6 +82,23 @@ const title = 'O Que Fizeram';
           month: 'short',
           year: 'numeric',
         });
+      }
+
+      // Wherever a piece of controlled-vocabulary text (an initiative
+      // type, a vote description) exactly matches a glossary term, link it
+      // to the glossary instead of rendering plain text — journey 3 in
+      // docs/o-que-fizeram-strategy.md. Exact match only, never a
+      // substring scan (see web/src/lib/glossary.ts).
+      function appendMaybeGlossaryLink(parent: HTMLElement, text: string) {
+        const entry = findGlossaryTerm(text);
+        if (!entry) {
+          parent.appendChild(document.createTextNode(text));
+          return;
+        }
+        const link = document.createElement('a');
+        link.href = `/glossario#${entry.slug}`;
+        link.textContent = text;
+        parent.appendChild(link);
       }
 
       function formatWeek(weekStart: string): string {
@@ -125,7 +144,13 @@ const title = 'O Que Fizeram';
           const positions = arSiglas
             .map((sigla) => `${sigla}: ${VOTE_POSITION_NAMES[derivePartyVotePosition(voto, sigla)]}`)
             .join(' · ');
-          li.textContent = `${dataStr} — ${voto.resultado} (${voto.descricao ?? 'sem descrição'}) — ${positions}`;
+          li.appendChild(document.createTextNode(`${dataStr} — ${voto.resultado} (`));
+          if (voto.descricao) {
+            appendMaybeGlossaryLink(li, voto.descricao);
+          } else {
+            li.appendChild(document.createTextNode('sem descrição'));
+          }
+          li.appendChild(document.createTextNode(`) — ${positions}`));
           list.appendChild(li);
         }
         container.appendChild(list);
@@ -136,7 +161,12 @@ const title = 'O Que Fizeram';
         const detail = document.createElement('div');
 
         const citation = document.createElement('p');
-        citation.textContent = `${item.tipoDesc} n.º ${item.numero}` + (item.dataEntrada ? ` · ${formatDate(item.dataEntrada)}` : '');
+        appendMaybeGlossaryLink(citation, item.tipoDesc);
+        citation.appendChild(
+          document.createTextNode(
+            ` n.º ${item.numero}` + (item.dataEntrada ? ` · ${formatDate(item.dataEntrada)}` : ''),
+          ),
+        );
         detail.appendChild(citation);
 
         if (item.canonicalUrl) {
@@ -210,7 +240,9 @@ const title = 'O Que Fizeram';
         } else {
           summary.appendChild(document.createTextNode(item.titulo));
         }
-        summary.appendChild(document.createTextNode(` (${item.tipoDesc} · ${item.topic})`));
+        summary.appendChild(document.createTextNode(' ('));
+        appendMaybeGlossaryLink(summary, item.tipoDesc);
+        summary.appendChild(document.createTextNode(` · ${item.topic})`));
         li.appendChild(summary);
 
         const toggle = document.createElement('button');

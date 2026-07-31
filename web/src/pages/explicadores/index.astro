@@ -1,0 +1,27 @@
+---
+import { EXPLAINERS } from '../../content/explainers';
+
+const title = 'Explicadores — O Que Fizeram';
+---
+
+<html lang="pt-PT">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <main>
+      <h1>Explicadores</h1>
+      <p>Como funciona o Estado português, explicado em linguagem simples.</p>
+      <ul>
+        {EXPLAINERS.map((explainer) => (
+          <li>
+            <a href={`/explicadores/${explainer.slug}`}>{explainer.title}</a>
+            <p>{explainer.summary}</p>
+          </li>
+        ))}
+      </ul>
+    </main>
+  </body>
+</html>

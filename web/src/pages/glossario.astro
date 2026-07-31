@@ -1,0 +1,39 @@
+---
+import { GLOSSARY } from '../content/glossary';
+import { findExplainer } from '../content/explainers';
+
+const title = 'Glossário — O Que Fizeram';
+---
+
+<html lang="pt-PT">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <main>
+      <h1>Glossário</h1>
+      <p>Termos usados na atividade parlamentar portuguesa, explicados em linguagem simples.</p>
+      <dl>
+        {GLOSSARY.map((entry) => {
+          const explainer = entry.explainerSlug ? findExplainer(entry.explainerSlug) : undefined;
+          return (
+            <div id={entry.slug}>
+              <dt>{entry.term}</dt>
+              <dd>
+                {entry.definition}
+                {explainer && (
+                  <>
+                    {' '}
+                    <a href={`/explicadores/${explainer.slug}`}>Saber mais →</a>
+                  </>
+                )}
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+    </main>
+  </body>
+</html>
