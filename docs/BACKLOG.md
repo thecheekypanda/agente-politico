@@ -4,7 +4,7 @@ Each block below is written to be pasted directly into a GitHub issue (title as 
 
 Legend — Priority: Must / Should / Could (MoSCoW). Size: S / M / L (T-shirt).
 
-**Progress (updated 2026-07-31):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Phase 2 (2.1, 2.2) is done — party program PDFs are chunked/indexed with Postgres full-text search, with a "not addressed" default for off-topic or low-confidence retrieval. Phase 3 (alignment engine, highest risk) is underway: 3.1 (deterministic type/vote-position classification), 3.2 (closed-list topic-tagging), and 3.3 (verdict drafting) are done. The "not addressed" case is decided deterministically before any LLM call (reusing 2.2's `getProgramPosition`) — the LLM only ever picks among `aligned` / `partially_aligned` / `contradicts`, and the stored citation/quote is always the verbatim retrieved DB chunk, never LLM output. Next: 3.4 (human review gate) — build the reviewer UI before wiring anything to a publish action.
+**Progress (updated 2026-08-01):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Phase 2 (2.1, 2.2) is done — party program PDFs are chunked/indexed with Postgres full-text search, with a "not addressed" default for off-topic or low-confidence retrieval. Phase 3 (alignment engine, highest risk): 3.1–3.4 are done. The "not addressed" case is decided deterministically before any LLM call (reusing 2.2's `getProgramPosition`) — the LLM only ever picks among `aligned` / `partially_aligned` / `contradicts`, and the stored citation/quote is always the verbatim retrieved DB chunk, never LLM output. 3.4 added a signed-in-reviewer gate (`web/src/pages/review.astro`, Supabase Auth + RLS, no server) — every draft needs a logged approve/edit/reject before an `approved_verdicts` view (still unused, not yet reachable by `anon`) could ever expose it publicly. Next: 3.5 (methodology audit view).
 
 ---
 
@@ -98,7 +98,7 @@ Given an initiative and its retrieved program passage, draft a verdict (aligned 
 
 **Acceptance criteria:** the same prompt template file is used regardless of party (a test should fail if any party-specific branching is introduced); every draft verdict stores its source citation and quoted program passage alongside the label.
 
-### [ ] 3.4 Human review gate
+### [x] 3.4 Human review gate
 **Priority:** Must · **Size:** M · **Depends on:** 3.3
 
 Build the reviewer interface showing the initiative, the citation, the program passage, and the draft verdict side-by-side, with approve/edit/reject actions. **Build this before wiring anything to a publish action.**

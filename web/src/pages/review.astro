@@ -1,0 +1,250 @@
+---
+const title = 'Revisão de veredictos — O Que Fizeram';
+---
+
+<html lang="pt-PT">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <main>
+      <h1>Revisão de veredictos</h1>
+      <p>
+        Ferramenta interna. Cada veredicto proposto pelo modelo tem de ser aprovado, corrigido ou
+        rejeitado por um humano antes de poder ser publicado — não existe nenhum caminho de
+        publicação que salte esta etapa.
+      </p>
+
+      <section id="signed-out">
+        <h2>Entrar</h2>
+        <form id="sign-in-form">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required />
+          <button type="submit">Enviar link de acesso</button>
+        </form>
+        <p id="sign-in-status" role="status"></p>
+      </section>
+
+      <section id="signed-in" hidden>
+        <p>
+          Sessão iniciada como <strong id="reviewer-email"></strong> ·
+          <button id="sign-out" type="button">Sair</button>
+        </p>
+        <p id="queue-status" role="status"></p>
+        <div id="queue"></div>
+      </section>
+    </main>
+
+    <script>
+      import { supabase } from '../lib/supabase-client';
+      import { buildReviewInsert, rowToPendingVerdict, VERDICT_LABELS, type PendingVerdict } from '../lib/review';
+
+      const signedOutSection = document.getElementById('signed-out') as HTMLElement;
+      const signedInSection = document.getElementById('signed-in') as HTMLElement;
+      const reviewerEmailEl = document.getElementById('reviewer-email') as HTMLElement;
+      const queueEl = document.getElementById('queue') as HTMLElement;
+      const queueStatusEl = document.getElementById('queue-status') as HTMLElement;
+      const signInForm = document.getElementById('sign-in-form') as HTMLFormElement;
+      const signInStatusEl = document.getElementById('sign-in-status') as HTMLElement;
+      const signOutButton = document.getElementById('sign-out') as HTMLButtonElement;
+
+      const LABEL_NAMES: Record<string, string> = {
+        aligned: 'Alinhado',
+        partially_aligned: 'Parcialmente alinhado',
+        contradicts: 'Contradiz',
+        not_addressed: 'Não abordado no programa',
+      };
+
+      signInForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const email = (document.getElementById('email') as HTMLInputElement).value;
+        signInStatusEl.textContent = 'A enviar...';
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: window.location.href },
+        });
+        signInStatusEl.textContent = error
+          ? `Erro: ${error.message}`
+          : 'Verifica o teu email para o link de acesso.';
+      });
+
+      signOutButton.addEventListener('click', async () => {
+        await supabase.auth.signOut();
+        showSignedOut();
+      });
+
+      function showSignedOut() {
+        signedOutSection.hidden = false;
+        signedInSection.hidden = true;
+      }
+
+      function renderCard(pending: PendingVerdict): HTMLElement {
+        const card = document.createElement('article');
+        card.dataset.verdictId = String(pending.verdictId);
+
+        const heading = document.createElement('h3');
+        heading.textContent = pending.titulo;
+        card.appendChild(heading);
+
+        const meta = document.createElement('p');
+        meta.textContent = `${pending.tipoDesc} · ${pending.topic} · Partido: ${pending.partyName}`;
+        card.appendChild(meta);
+
+        if (pending.epigrafe) {
+          const epigrafe = document.createElement('p');
+          epigrafe.textContent = pending.epigrafe;
+          card.appendChild(epigrafe);
+        }
+
+        if (pending.canonicalUrl) {
+          const link = document.createElement('a');
+          link.href = pending.canonicalUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'Ver iniciativa em parlamento.pt';
+          card.appendChild(link);
+        }
+
+        const passageHeading = document.createElement('h4');
+        passageHeading.textContent = pending.quotedPassage
+          ? `Passagem do programa (página ${pending.citationPageNumber})`
+          : 'Programa não aborda este tópico';
+        card.appendChild(passageHeading);
+
+        if (pending.quotedPassage) {
+          const passage = document.createElement('blockquote');
+          passage.textContent = pending.quotedPassage;
+          card.appendChild(passage);
+
+          const programLink = document.createElement('a');
+          programLink.href = pending.programSourceUrl;
+          programLink.target = '_blank';
+          programLink.rel = 'noopener noreferrer';
+          programLink.textContent = `Ver programa de ${pending.partyName}`;
+          card.appendChild(programLink);
+        }
+
+        const draftHeading = document.createElement('h4');
+        draftHeading.textContent = `Veredicto proposto: ${LABEL_NAMES[pending.draftLabel] ?? pending.draftLabel}`;
+        card.appendChild(draftHeading);
+
+        if (pending.rationale) {
+          const rationale = document.createElement('p');
+          rationale.textContent = pending.rationale;
+          card.appendChild(rationale);
+        }
+
+        const labelSelect = document.createElement('select');
+        for (const label of VERDICT_LABELS) {
+          const option = document.createElement('option');
+          option.value = label;
+          option.textContent = LABEL_NAMES[label] ?? label;
+          if (label === pending.draftLabel) option.selected = true;
+          labelSelect.appendChild(option);
+        }
+        card.appendChild(labelSelect);
+
+        const notesInput = document.createElement('textarea');
+        notesInput.placeholder = 'Notas (opcional)';
+        card.appendChild(notesInput);
+
+        const errorEl = document.createElement('p');
+        errorEl.setAttribute('role', 'alert');
+        card.appendChild(errorEl);
+
+        const approveButton = document.createElement('button');
+        approveButton.type = 'button';
+        approveButton.textContent = 'Aprovar';
+        approveButton.addEventListener('click', () =>
+          submitReview(pending.verdictId, 'approved', labelSelect.value as PendingVerdict['draftLabel'], notesInput.value, card, errorEl),
+        );
+        card.appendChild(approveButton);
+
+        const rejectButton = document.createElement('button');
+        rejectButton.type = 'button';
+        rejectButton.textContent = 'Rejeitar';
+        rejectButton.addEventListener('click', () =>
+          submitReview(pending.verdictId, 'rejected', null, notesInput.value, card, errorEl),
+        );
+        card.appendChild(rejectButton);
+
+        return card;
+      }
+
+      async function submitReview(
+        verdictId: number,
+        decision: 'approved' | 'rejected',
+        finalLabel: PendingVerdict['draftLabel'] | null,
+        notes: string,
+        card: HTMLElement,
+        errorEl: HTMLElement,
+      ) {
+        errorEl.textContent = '';
+        let insertRow;
+        try {
+          insertRow = buildReviewInsert(verdictId, decision, finalLabel, notes);
+        } catch (err) {
+          errorEl.textContent = err instanceof Error ? err.message : String(err);
+          return;
+        }
+
+        const { error } = await supabase.from('verdict_reviews').insert(insertRow);
+        if (error) {
+          errorEl.textContent = `Erro ao gravar a revisão: ${error.message}`;
+          return;
+        }
+        card.remove();
+        if (!queueEl.children.length) {
+          queueStatusEl.textContent = 'Sem veredictos pendentes.';
+        }
+      }
+
+      async function loadQueue() {
+        queueStatusEl.textContent = 'A carregar...';
+        const { data, error } = await supabase.from('pending_verdicts').select('*').limit(50);
+        if (error) {
+          queueStatusEl.textContent = `Erro ao carregar veredictos: ${error.message}`;
+          return;
+        }
+
+        queueEl.replaceChildren();
+        const rows = (data ?? []).map(rowToPendingVerdict);
+        if (rows.length === 0) {
+          queueStatusEl.textContent = 'Sem veredictos pendentes.';
+          return;
+        }
+        queueStatusEl.textContent = '';
+        for (const row of rows) {
+          queueEl.appendChild(renderCard(row));
+        }
+      }
+
+      async function showSignedIn(email: string | undefined) {
+        signedOutSection.hidden = true;
+        signedInSection.hidden = false;
+        reviewerEmailEl.textContent = email ?? '';
+        await loadQueue();
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session) {
+        await showSignedIn(session.user.email);
+      } else {
+        showSignedOut();
+      }
+
+      supabase.auth.onAuthStateChange((_event, newSession) => {
+        if (newSession) {
+          showSignedIn(newSession.user.email);
+        } else {
+          showSignedOut();
+        }
+      });
+    </script>
+  </body>
+</html>

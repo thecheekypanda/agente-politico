@@ -155,6 +155,8 @@ Another account-level step only you can do. Until this is done, the nightly inge
    - `20260727020000_iniciativas_canonical_url_index.sql`
    - `20260727030000_party_programs.sql`
    - `20260730000000_iniciativas_topic.sql`
+   - `20260731000000_verdicts.sql`
+   - `20260801000000_verdict_reviews.sql`
 
    Run any new migration files the same way as they're added.
 4. Get your credentials: **Project Settings** (gear icon) → **API**.
@@ -178,6 +180,20 @@ The topic-tagging step (and later the alignment engine) calls the Claude API. Un
 2. Add it as a GitHub Actions secret the same way as the Supabase ones: repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret** → name it `ANTHROPIC_API_KEY`.
 3. (Optional, for local testing) add it to your `.env` file alongside the Supabase values, then run `npx tsx --env-file=.env pipeline/src/ingest-topics.ts`.
 4. To confirm it worked: check the `topic` column on rows in the `iniciativas` table in Supabase's Table Editor.
+
+## Step 13 — Set up the reviewer gate (needed for backlog 3.4+)
+
+Every draft verdict needs a signed-in human to approve, edit, or reject it before it can ever be published — there's no code path around this. That means each reviewer needs their own Supabase Auth account, and the frontend needs the public (not service-role) API key.
+
+1. **Create one account per reviewer, don't allow public sign-up:** Supabase dashboard → **Authentication** → **Users** → **Add user** → **Invite**, once per reviewer. Then **Authentication** → **Providers** → **Email** → turn off "Allow new users to sign up" — this is a small, individually-provisioned reviewer roster, not a public registration flow.
+2. Get the public key: **Project Settings** → **API** → **anon** / **public** key (the *other* one from Step 11 — never the service-role key here, since this one ships to the browser).
+3. Create a `.env` file inside `web/` (also already gitignored) with:
+   ```
+   PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+   PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+   ```
+4. Run `npm run dev --workspace=web` and open `http://localhost:4321/review`. Sign in with a reviewer's email (a magic link is emailed by Supabase Auth), then follow the link back to the same page.
+5. To confirm it worked: after 3.3 has drafted at least one verdict, it should show up in the queue at `/review` with the initiative, the citation, the program passage, and the draft label — approving or rejecting it should make it disappear from the queue and appear as a row in the `verdict_reviews` table in Supabase's Table Editor.
 
 ## A few habits worth keeping
 
