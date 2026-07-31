@@ -1,0 +1,97 @@
+---
+import report from '../data/methodology.json';
+
+const title = 'Metodologia — O Que Fizeram';
+
+const LABEL_NAMES: Record<string, string> = {
+  aligned: 'Alinhado',
+  partially_aligned: 'Parcialmente alinhado',
+  contradicts: 'Contradiz',
+  not_addressed: 'Não abordado no programa',
+};
+---
+
+<html lang="pt-PT">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <main>
+      <h1>Metodologia</h1>
+      <p>
+        Esta página é gerada diretamente a partir do código-fonte do motor de alinhamento — os
+        modelos de instrução (<em>prompts</em>) abaixo são produzidos chamando as mesmas funções
+        usadas em produção, com dados de exemplo genéricos em vez de dados reais, e não são
+        cópias escritas à mão. Isto garante que nunca podem divergir silenciosamente do que é
+        realmente enviado ao modelo. O código completo é público:
+        <code>pipeline/src/export-methodology.ts</code>.
+      </p>
+
+      <h2>Deteção de alinhamento (veredictos)</h2>
+      <p>
+        Modelo: <code>{report.verdictDrafting.model}</code> · Versão do modelo de instrução:{' '}
+        <code>{report.verdictDrafting.promptVersion}</code>
+      </p>
+      <p>
+        Este modelo de instrução é o único usado para todos os partidos, sem excepção — os únicos
+        elementos que variam são o nome do partido, o resumo da iniciativa e a passagem do
+        programa. Não existe nenhuma lógica específica por partido.
+      </p>
+      <pre>{report.verdictDrafting.promptTemplate}</pre>
+      <p>
+        O modelo só pode escolher entre {report.verdictDrafting.addressedOnlyLabels.length}{' '}
+        categorias: {report.verdictDrafting.addressedOnlyLabels.map((l) => LABEL_NAMES[l] ?? l).join(', ')}.
+        A categoria "{LABEL_NAMES.not_addressed}" nunca é decidida pelo modelo — ver secção
+        seguinte.
+      </p>
+
+      <h2>Classificação por tópico</h2>
+      <p>Modelo: <code>{report.topicTagging.model}</code></p>
+      <pre>{report.topicTagging.promptTemplate}</pre>
+      <p>
+        O modelo só pode escolher um tópico de uma lista fixa e fechada de {report.topicTagging.topics.length}{' '}
+        tópicos — nunca pode inventar um novo:
+      </p>
+      <ul>
+        {report.topicTagging.topics.map((topic) => <li>{topic}</li>)}
+      </ul>
+
+      <h2>Pesquisa no programa e o critério "não abordado"</h2>
+      <p>
+        Antes de qualquer chamada ao modelo, o sistema pesquisa o programa do partido pelo tópico
+        da iniciativa. Pontuação mínima de confiança:{' '}
+        <code>{report.retrieval.minConfidentRank}</code> · Máximo de passagens consideradas:{' '}
+        <code>{report.retrieval.limit}</code>.
+      </p>
+      <p>{report.retrieval.notAddressedRule}</p>
+
+      <h2>Partidos cobertos</h2>
+      <p>
+        A mesma pesquisa e o mesmo modelo de instrução são aplicados a todos os partidos abaixo,
+        sem excepção:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Partido</th>
+            <th>Sigla</th>
+            <th>Ciclo eleitoral</th>
+            <th>Fonte oficial do programa</th>
+          </tr>
+        </thead>
+        <tbody>
+          {report.parties.map((party) => (
+            <tr>
+              <td>{party.partyName}</td>
+              <td>{party.label}</td>
+              <td>{party.electionCycle}</td>
+              <td><a href={party.sourceUrl} target="_blank" rel="noopener noreferrer">PDF oficial</a></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </main>
+  </body>
+</html>

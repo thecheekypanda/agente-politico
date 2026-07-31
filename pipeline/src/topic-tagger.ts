@@ -2,7 +2,7 @@ import { sleep } from './sleep.js';
 import { TOPICS, isTopic, type Topic } from './topics.js';
 import type { TopicStore, UntaggedIniciativa } from './topic-store.js';
 
-const MODEL = 'claude-haiku-4-5';
+export const MODEL = 'claude-haiku-4-5';
 const MAX_TOKENS = 256;
 const POLL_INTERVAL_MS = 5000;
 
@@ -51,7 +51,11 @@ const TOPIC_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-function buildPrompt(iniciativa: UntaggedIniciativa): string {
+// Exported for the methodology audit view (backlog 3.5) — it renders this
+// exact function's output with placeholder inputs, rather than a hand-copied
+// string, so the displayed template can never silently drift from what's
+// actually sent to the model.
+export function buildTopicPrompt(iniciativa: UntaggedIniciativa): string {
   return [
     'Classifica esta iniciativa parlamentar portuguesa num único tópico da lista fornecida.',
     `Título: ${iniciativa.titulo}`,
@@ -68,7 +72,7 @@ export function buildBatchRequest(iniciativa: UntaggedIniciativa): BatchCreateRe
     params: {
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      messages: [{ role: 'user', content: buildPrompt(iniciativa) }],
+      messages: [{ role: 'user', content: buildTopicPrompt(iniciativa) }],
       output_config: { format: { type: 'json_schema', schema: TOPIC_SCHEMA } },
     },
   };

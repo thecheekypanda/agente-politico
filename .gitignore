@@ -5,3 +5,7 @@ dist/
 .env.local
 *.log
 .DS_Store
+
+# Generated fresh by pipeline/src/export-methodology.ts on every web build
+# (web/package.json's "prebuild" script) — not source, same category as dist/.
+web/src/data/methodology.json

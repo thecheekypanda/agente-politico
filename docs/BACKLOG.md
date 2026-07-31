@@ -4,7 +4,7 @@ Each block below is written to be pasted directly into a GitHub issue (title as 
 
 Legend — Priority: Must / Should / Could (MoSCoW). Size: S / M / L (T-shirt).
 
-**Progress (updated 2026-08-01):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Phase 2 (2.1, 2.2) is done — party program PDFs are chunked/indexed with Postgres full-text search, with a "not addressed" default for off-topic or low-confidence retrieval. Phase 3 (alignment engine, highest risk): 3.1–3.4 are done. The "not addressed" case is decided deterministically before any LLM call (reusing 2.2's `getProgramPosition`) — the LLM only ever picks among `aligned` / `partially_aligned` / `contradicts`, and the stored citation/quote is always the verbatim retrieved DB chunk, never LLM output. 3.4 added a signed-in-reviewer gate (`web/src/pages/review.astro`, Supabase Auth + RLS, no server) — every draft needs a logged approve/edit/reject before an `approved_verdicts` view (still unused, not yet reachable by `anon`) could ever expose it publicly. Next: 3.5 (methodology audit view).
+**Progress (updated 2026-08-01):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Phase 2 (2.1, 2.2) is done — party program PDFs are chunked/indexed with Postgres full-text search, with a "not addressed" default for off-topic or low-confidence retrieval. Phase 3 (alignment engine, highest risk) is **done in full (3.1–3.5)**. The "not addressed" case is decided deterministically before any LLM call (reusing 2.2's `getProgramPosition`) — the LLM only ever picks among `aligned` / `partially_aligned` / `contradicts`, and the stored citation/quote is always the verbatim retrieved DB chunk, never LLM output. 3.4 added a signed-in-reviewer gate (`web/src/pages/review.astro`, Supabase Auth + RLS, no server) — every draft needs a logged approve/edit/reject before an `approved_verdicts` view (still unused, not yet reachable by `anon`) could ever expose it publicly. 3.5 added a public `/methodology` page generated at build time (`pipeline/src/export-methodology.ts` → `web/src/data/methodology.json`, regenerated fresh on every `web` build via npm's `prebuild` hook) that renders the actual prompt templates and retrieval thresholds by calling the real functions with placeholder inputs, plus the full party roster — so the "identical treatment per party" claim is auditable, not just asserted. Next: Phase 4 (digest & frontend), starting with 4.1 (weekly digest generation).
 
 ---
 
@@ -105,7 +105,7 @@ Build the reviewer interface showing the initiative, the citation, the program p
 
 **Acceptance criteria:** there is no code path from a drafted verdict to a public-facing page that doesn't pass through an explicit human approval, logged with reviewer identity and timestamp.
 
-### [ ] 3.5 Methodology audit view
+### [x] 3.5 Methodology audit view
 **Priority:** Must · **Size:** S · **Depends on:** 3.3
 
 A page (internal or public) showing the exact prompt template and retrieval logic in use, so an auditor can confirm no party received different treatment.

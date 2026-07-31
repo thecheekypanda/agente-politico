@@ -7,7 +7,7 @@ import type { PendingVerdict, VerdictInsert, VerdictStore } from './verdict-stor
 import { isAddressedVerdictLabel, type AddressedVerdictLabel } from './verdict-labels.js';
 import { buildVerdictPrompt, VERDICT_SCHEMA } from './verdict-prompt.js';
 
-const MODEL = 'claude-haiku-4-5';
+export const MODEL = 'claude-haiku-4-5';
 const MAX_TOKENS = 512;
 const POLL_INTERVAL_MS = 5000;
 

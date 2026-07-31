@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
+    "prebuild": "npm run export:methodology --workspace=pipeline",
     "build": "astro check && astro build",
     "preview": "astro preview",
     "test": "vitest run"

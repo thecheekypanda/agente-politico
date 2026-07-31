@@ -10,7 +10,8 @@
     "resolve:canonical-urls": "tsx src/resolve-canonical-urls.ts",
     "ingest:programs": "tsx src/ingest-programs.ts",
     "ingest:topics": "tsx src/ingest-topics.ts",
-    "draft:verdicts": "tsx src/ingest-verdicts.ts"
+    "draft:verdicts": "tsx src/ingest-verdicts.ts",
+    "export:methodology": "tsx src/export-methodology.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

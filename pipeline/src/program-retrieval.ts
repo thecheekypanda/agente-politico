@@ -5,8 +5,11 @@ import type { ChunkSearchResult, ProgramChunksStore } from './program-chunks-sto
 // default is a conservative placeholder and needs calibrating against the
 // real ingested corpus (backlog 2.1) before Phase 3 relies on it; callers
 // can override via options.minRank in the meantime.
-const DEFAULT_MIN_CONFIDENT_RANK = 0.01;
-const DEFAULT_LIMIT = 5;
+// Exported for the methodology audit view (backlog 3.5), so the displayed
+// retrieval thresholds are read directly from the value actually in effect,
+// not a copy that could drift from it.
+export const DEFAULT_MIN_CONFIDENT_RANK = 0.01;
+export const DEFAULT_LIMIT = 5;
 
 export type ProgramPositionResult =
   | { addressed: true; label: string; topic: string; chunks: ChunkSearchResult[] }
