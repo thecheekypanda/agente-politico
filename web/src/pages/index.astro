@@ -22,7 +22,8 @@ const title = 'O Que Fizeram';
 
     <script>
       import { supabase } from '../lib/supabase-client';
-      import { groupDigestItems, rowToDigestItem, type DigestCard } from '../lib/digest';
+      import { groupDigestItems, rowToDigestItem, type DigestCard, type DigestItem } from '../lib/digest';
+      import { derivePartyVotePosition, rowToVotacao, type VotacaoRow } from '../lib/votes';
 
       const LABEL_NAMES: Record<string, string> = {
         aligned: 'Alinhado',
@@ -31,8 +32,24 @@ const title = 'O Que Fizeram';
         not_addressed: 'Não abordado no programa',
       };
 
+      const VOTE_POSITION_NAMES: Record<string, string> = {
+        favor: 'A Favor',
+        contra: 'Contra',
+        abstencao: 'Abstenção',
+        ausencia: 'Ausência',
+        nao_registado: 'Não registado',
+      };
+
       const digestEl = document.getElementById('digest') as HTMLElement;
       const statusEl = document.getElementById('digest-status') as HTMLElement;
+
+      function formatDate(date: string): string {
+        return new Date(`${date}T00:00:00Z`).toLocaleDateString('pt-PT', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+      }
 
       function formatWeek(weekStart: string): string {
         const start = new Date(`${weekStart}T00:00:00Z`);
@@ -40,6 +57,149 @@ const title = 'O Que Fizeram';
         end.setUTCDate(end.getUTCDate() + 6);
         const fmt = (d: Date) => d.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
         return `${fmt(start)} – ${fmt(end)}`;
+      }
+
+      // Fetched lazily, once per item, on first expand — the vote-result
+      // block is the only part of the detail panel that needs a second
+      // network round trip.
+      const votacoesCache = new Map<number, VotacaoRow[]>();
+
+      async function fetchVotacoes(iniciativaId: number): Promise<VotacaoRow[]> {
+        const cached = votacoesCache.get(iniciativaId);
+        if (cached) return cached;
+
+        const { data, error } = await supabase.from('votacoes').select('*').eq('iniciativa_id', iniciativaId);
+        if (error) {
+          throw new Error(error.message);
+        }
+        const rows = (data ?? []).map(rowToVotacao);
+        votacoesCache.set(iniciativaId, rows);
+        return rows;
+      }
+
+      function renderVoteResult(votos: VotacaoRow[], arSiglas: string[]): HTMLElement {
+        const container = document.createElement('div');
+        if (votos.length === 0) {
+          container.textContent = 'Sem votação registada para esta iniciativa.';
+          return container;
+        }
+
+        const list = document.createElement('ul');
+        for (const voto of votos) {
+          const li = document.createElement('li');
+          const dataStr = voto.data ? formatDate(voto.data) : 'data desconhecida';
+          // One line per AR sigla — a coalition (e.g. AD = PSD + CDS-PP)
+          // never gets a single merged position; if the two groups voted
+          // differently, both show up separately, exactly as recorded.
+          const positions = arSiglas
+            .map((sigla) => `${sigla}: ${VOTE_POSITION_NAMES[derivePartyVotePosition(voto, sigla)]}`)
+            .join(' · ');
+          li.textContent = `${dataStr} — ${voto.resultado} (${voto.descricao ?? 'sem descrição'}) — ${positions}`;
+          list.appendChild(li);
+        }
+        container.appendChild(list);
+        return container;
+      }
+
+      function renderDetail(item: DigestItem): HTMLElement {
+        const detail = document.createElement('div');
+
+        const citation = document.createElement('p');
+        citation.textContent = `${item.tipoDesc} n.º ${item.numero}` + (item.dataEntrada ? ` · ${formatDate(item.dataEntrada)}` : '');
+        detail.appendChild(citation);
+
+        if (item.canonicalUrl) {
+          const link = document.createElement('a');
+          link.href = item.canonicalUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'Ver iniciativa em parlamento.pt';
+          detail.appendChild(link);
+        }
+
+        const voteHeading = document.createElement('h4');
+        voteHeading.textContent = 'Resultado da votação';
+        detail.appendChild(voteHeading);
+
+        const voteContainer = document.createElement('div');
+        voteContainer.textContent = 'A carregar...';
+        detail.appendChild(voteContainer);
+        fetchVotacoes(item.iniciativaId)
+          .then((votos) => voteContainer.replaceWith(renderVoteResult(votos, item.arSiglas)))
+          .catch((err) => {
+            voteContainer.textContent = `Erro ao carregar a votação: ${err instanceof Error ? err.message : String(err)}`;
+          });
+
+        if (item.quotedPassage) {
+          const passageHeading = document.createElement('h4');
+          passageHeading.textContent = `Passagem do programa (página ${item.citationPageNumber})`;
+          detail.appendChild(passageHeading);
+
+          const passage = document.createElement('blockquote');
+          passage.textContent = item.quotedPassage;
+          detail.appendChild(passage);
+
+          const programLink = document.createElement('a');
+          programLink.href = item.programSourceUrl;
+          programLink.target = '_blank';
+          programLink.rel = 'noopener noreferrer';
+          programLink.textContent = 'Ver programa eleitoral';
+          detail.appendChild(programLink);
+        }
+
+        if (item.rationale) {
+          const rationaleHeading = document.createElement('h4');
+          rationaleHeading.textContent = 'Porque este veredicto';
+          detail.appendChild(rationaleHeading);
+
+          const rationale = document.createElement('p');
+          rationale.textContent = item.rationale;
+          detail.appendChild(rationale);
+        }
+
+        return detail;
+      }
+
+      function renderItem(item: DigestItem): HTMLElement {
+        const li = document.createElement('li');
+
+        const summary = document.createElement('p');
+        const labelChip = document.createElement('strong');
+        labelChip.textContent = LABEL_NAMES[item.label] ?? item.label;
+        summary.appendChild(labelChip);
+        summary.appendChild(document.createTextNode(' — '));
+
+        if (item.canonicalUrl) {
+          const link = document.createElement('a');
+          link.href = item.canonicalUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = item.titulo;
+          summary.appendChild(link);
+        } else {
+          summary.appendChild(document.createTextNode(item.titulo));
+        }
+        summary.appendChild(document.createTextNode(` (${item.tipoDesc} · ${item.topic})`));
+        li.appendChild(summary);
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.textContent = 'Ver detalhe';
+        li.appendChild(toggle);
+
+        let detailEl: HTMLElement | null = null;
+        toggle.addEventListener('click', () => {
+          if (detailEl) {
+            detailEl.hidden = !detailEl.hidden;
+            toggle.textContent = detailEl.hidden ? 'Ver detalhe' : 'Esconder detalhe';
+            return;
+          }
+          detailEl = renderDetail(item);
+          li.appendChild(detailEl);
+          toggle.textContent = 'Esconder detalhe';
+        });
+
+        return li;
       }
 
       function renderCard(card: DigestCard): HTMLElement {
@@ -51,26 +211,7 @@ const title = 'O Que Fizeram';
 
         const list = document.createElement('ul');
         for (const item of card.items) {
-          const li = document.createElement('li');
-
-          const labelChip = document.createElement('strong');
-          labelChip.textContent = LABEL_NAMES[item.label] ?? item.label;
-          li.appendChild(labelChip);
-          li.appendChild(document.createTextNode(' — '));
-
-          if (item.canonicalUrl) {
-            const link = document.createElement('a');
-            link.href = item.canonicalUrl;
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-            link.textContent = item.titulo;
-            li.appendChild(link);
-          } else {
-            li.appendChild(document.createTextNode(item.titulo));
-          }
-
-          li.appendChild(document.createTextNode(` (${item.tipoDesc} · ${item.topic})`));
-          list.appendChild(li);
+          list.appendChild(renderItem(item));
         }
         article.appendChild(list);
 

@@ -14,6 +14,13 @@ function row(overrides: Partial<Record<string, unknown>> = {}): Record<string, u
     label: 'aligned',
     week_start: '2026-07-27',
     reviewed_at: '2026-07-28T00:00:00Z',
+    numero: '123/XVII',
+    data_entrada: '2026-07-27',
+    citation_page_number: 5,
+    quoted_passage: 'Passagem do programa',
+    rationale: 'Justificação',
+    program_source_url: 'https://ps.pt/programa.pdf',
+    ar_siglas: ['PS'],
     ...overrides,
   };
 }
@@ -34,7 +41,20 @@ describe('rowToDigestItem', () => {
       label: 'aligned',
       weekStart: '2026-07-27',
       reviewedAt: '2026-07-28T00:00:00Z',
+      numero: '123/XVII',
+      dataEntrada: '2026-07-27',
+      citationPageNumber: 5,
+      quotedPassage: 'Passagem do programa',
+      rationale: 'Justificação',
+      programSourceUrl: 'https://ps.pt/programa.pdf',
+      arSiglas: ['PS'],
     });
+  });
+
+  it('carries a coalition party\'s multiple AR siglas through unchanged — never merges them', () => {
+    const mapped = rowToDigestItem(row({ party_label: 'AD', ar_siglas: ['PSD', 'CDS-PP'] }));
+
+    expect(mapped.arSiglas).toEqual(['PSD', 'CDS-PP']);
   });
 });
 

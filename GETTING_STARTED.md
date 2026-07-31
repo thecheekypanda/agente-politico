@@ -158,6 +158,7 @@ Another account-level step only you can do. Until this is done, the nightly inge
    - `20260731000000_verdicts.sql`
    - `20260801000000_verdict_reviews.sql`
    - `20260802000000_public_digest.sql`
+   - `20260803000000_digest_drill_down.sql`
 
    Run any new migration files the same way as they're added.
 4. Get your credentials: **Project Settings** (gear icon) → **API**.
