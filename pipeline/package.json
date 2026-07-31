@@ -9,7 +9,8 @@
     "ingest:votacoes": "tsx src/ingest-votacoes.ts",
     "resolve:canonical-urls": "tsx src/resolve-canonical-urls.ts",
     "ingest:programs": "tsx src/ingest-programs.ts",
-    "ingest:topics": "tsx src/ingest-topics.ts"
+    "ingest:topics": "tsx src/ingest-topics.ts",
+    "draft:verdicts": "tsx src/ingest-verdicts.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
