@@ -159,6 +159,7 @@ Another account-level step only you can do. Until this is done, the nightly inge
    - `20260801000000_verdict_reviews.sql`
    - `20260802000000_public_digest.sql`
    - `20260803000000_digest_drill_down.sql`
+   - `20260804000000_correction_requests.sql`
 
    Run any new migration files the same way as they're added.
 4. Get your credentials: **Project Settings** (gear icon) → **API**.
@@ -200,6 +201,22 @@ Every draft verdict needs a signed-in human to approve, edit, or reject it befor
 ## Step 14 — Nothing extra needed for the public homepage (backlog 4.1+)
 
 The homepage at `/` uses the same `PUBLIC_SUPABASE_URL` / `PUBLIC_SUPABASE_ANON_KEY` from Step 13 — no new setup. It shows one card per party per week, built only from verdicts a reviewer has approved at `/review`; nothing else is ever readable by a visitor. To confirm it worked: approve at least one verdict, then reload `/` — a card for that party and the initiative's own week should appear, and rejected/pending verdicts should never show up there no matter how long you wait.
+
+## Step 15 — Fill in the privacy notice, and (optional) set up analytics (needed for backlog B.1)
+
+1. **Before launch**, edit `web/src/pages/privacidade.astro` and replace the `[a preencher pelo operador antes do lançamento — ver GETTING_STARTED.md]` placeholder with the real name/contact of whoever is responsible for handling data-subject requests (access, correction, erasure). This repo is public, so don't commit a personal email you don't want public unless that's genuinely how you want to be reachable — a dedicated project email/alias works too.
+2. **(Optional) Cloudflare Web Analytics** — cookie-free, no consent banner needed, and needs no server of its own (unlike self-hosting Plausible/Umami): Cloudflare dashboard → **Analytics & Logs** → **Web Analytics** → **Add a site**, paste your Cloudflare Pages domain, and copy the token from the generated snippet (the `token` value inside `data-cf-beacon`).
+3. Add it to `web/.env` (alongside the Supabase values from Step 13) as `PUBLIC_CF_ANALYTICS_TOKEN=your-token`, and also add it as a Cloudflare Pages environment variable (Pages project → **Settings** → **Environment variables**) so production builds pick it up too.
+4. Without this token set, `Analytics.astro` renders nothing at all — no tracking of any kind happens by default.
+
+## Step 16 — Resolving a correction request (needed for backlog B.2)
+
+Anyone can submit a correction request at `/correcoes` — no setup needed for that, it works the moment the Step 11 migrations are applied. Resolving one is a manual step, the same way fixing a mis-submitted review is (Step 13):
+
+1. Supabase dashboard → **Table Editor** → `correction_requests`.
+2. Find the row, and edit `status` (to `resolved` or `rejected`), `resolution_notes` (this text is public — write it for the reader, not just for your own records), and `resolved_at` (set to now).
+3. The submitter's `submitter_email` column is visible here in the dashboard (via your project-owner access) so you can follow up with them directly if they left one — it's never exposed through the site itself.
+4. Refresh `/correcoes` to confirm the resolution now shows in the public log.
 
 ## A few habits worth keeping
 

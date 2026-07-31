@@ -1,4 +1,6 @@
 ---
+import Analytics from '../components/Analytics.astro';
+
 const title = 'O Que Fizeram';
 ---
 
@@ -7,6 +9,7 @@ const title = 'O Que Fizeram';
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
+    <Analytics />
   </head>
   <body>
     <main>
@@ -15,7 +18,9 @@ const title = 'O Que Fizeram';
         Resumos semanais da atividade parlamentar portuguesa, comparada com o programa eleitoral
         de cada partido. Cada etiqueta abaixo já foi revista e aprovada por um humano — nada aqui
         é publicado diretamente por um modelo de IA. Ver a <a href="/methodology">metodologia</a>,
-        o <a href="/glossario">glossário</a> ou os <a href="/explicadores">explicadores</a>.
+        o <a href="/glossario">glossário</a>, os <a href="/explicadores">explicadores</a>,
+        a <a href="/privacidade">política de privacidade</a> ou como
+        <a href="/correcoes">pedir uma correção</a>.
       </p>
       <form id="filters" hidden>
         <fieldset>
@@ -217,6 +222,11 @@ const title = 'O Que Fizeram';
           rationale.textContent = item.rationale;
           detail.appendChild(rationale);
         }
+
+        const reportLink = document.createElement('a');
+        reportLink.href = `/correcoes?verdict_id=${item.verdictId}&titulo=${encodeURIComponent(item.titulo)}`;
+        reportLink.textContent = 'Reportar um problema com este veredicto';
+        detail.appendChild(reportLink);
 
         return detail;
       }

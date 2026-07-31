@@ -35,6 +35,40 @@ test.describe('accessibility', () => {
     expect(results.violations).toEqual([]);
   });
 
+  test('privacy notice has no WCAG 2.1 AA violations', async ({ page }) => {
+    await page.goto('/privacidade');
+
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test('corrections page, including a resolved entry in the public log, has no WCAG 2.1 AA violations', async ({
+    page,
+  }) => {
+    await page.route('**/rest/v1/public_correction_requests**', (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: 1,
+            verdict_id: 42,
+            reference_note: 'Veredicto #42: Recomenda ao Governo medidas de apoio à habitação',
+            description: 'A passagem citada não corresponde ao tema da iniciativa.',
+            status: 'resolved',
+            resolution_notes: 'Confirmado e corrigido — a passagem foi atualizada.',
+            submitted_at: '2026-08-01T00:00:00Z',
+            resolved_at: '2026-08-02T00:00:00Z',
+          },
+        ],
+      }),
+    );
+
+    await page.goto('/correcoes');
+    await expect(page.getByText('Resolvido')).toBeVisible();
+
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
   test('review page (signed out) has no WCAG 2.1 AA violations', async ({ page }) => {
     await page.goto('/review');
     await expect(page.locator('#signed-out')).toBeVisible();

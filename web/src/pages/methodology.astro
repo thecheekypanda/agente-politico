@@ -1,4 +1,5 @@
 ---
+import Analytics from '../components/Analytics.astro';
 import report from '../data/methodology.json';
 
 const title = 'Metodologia — O Que Fizeram';
@@ -16,6 +17,7 @@ const LABEL_NAMES: Record<string, string> = {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
+    <Analytics />
   </head>
   <body>
     <main>

@@ -1,0 +1,21 @@
+---
+// Cloudflare Web Analytics — chosen over self-hosting Plausible/Umami
+// (docs/o-que-fizeram-strategy.md's risk register suggestion) because it
+// needs no server of its own, matching the "no always-on server" /
+// "near-zero fixed cost" architecture decisions. Cookie-free, no
+// cross-site tracking, no PII tied to reading behavior — satisfies the
+// "consent-free analytics" requirement by construction, not by policy.
+//
+// Renders nothing until PUBLIC_CF_ANALYTICS_TOKEN is set — see
+// GETTING_STARTED.md for the (manual, account-level) setup step.
+const token = import.meta.env.PUBLIC_CF_ANALYTICS_TOKEN;
+---
+
+{token && (
+  <script
+    is:inline
+    defer
+    src="https://static.cloudflareinsights.com/beacon.min.js"
+    data-cf-beacon={`{"token": "${token}"}`}
+  />
+)}

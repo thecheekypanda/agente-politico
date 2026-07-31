@@ -1,0 +1,151 @@
+---
+import Analytics from '../components/Analytics.astro';
+
+const title = 'Correções — O Que Fizeram';
+---
+
+<html lang="pt-PT">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <Analytics />
+  </head>
+  <body>
+    <main>
+      <h1>Correções e direito de resposta</h1>
+      <p>
+        Qualquer pessoa pode pedir a correção de um erro factual ou contestar um veredicto de
+        alinhamento publicado neste site. Todos os pedidos e as respetivas resoluções são
+        publicados abaixo — não existe nenhum pedido tratado apenas em privado.
+      </p>
+
+      <h2>Submeter um pedido</h2>
+      <form id="correction-form">
+        <label for="reference-note">A que item se refere?</label>
+        <textarea id="reference-note" name="reference-note" required></textarea>
+
+        <label for="description">Descreva o problema</label>
+        <textarea id="description" name="description" required></textarea>
+
+        <label for="submitter-email">O seu email (opcional, apenas para seguimento — nunca publicado)</label>
+        <input type="email" id="submitter-email" name="submitter-email" />
+
+        <button type="submit">Enviar pedido</button>
+      </form>
+      <p id="form-status" role="status"></p>
+
+      <h2>Pedidos e resoluções</h2>
+      <p id="log-status" role="status">A carregar...</p>
+      <ul id="correction-log"></ul>
+    </main>
+
+    <script>
+      import { supabase } from '../lib/supabase-client';
+      import { buildCorrectionInsert, rowToCorrectionRequest, type CorrectionRequest } from '../lib/corrections';
+
+      const STATUS_NAMES: Record<string, string> = {
+        pending: 'Pendente',
+        resolved: 'Resolvido',
+        rejected: 'Rejeitado',
+      };
+
+      const referenceNoteInput = document.getElementById('reference-note') as HTMLTextAreaElement;
+      const descriptionInput = document.getElementById('description') as HTMLTextAreaElement;
+      const submitterEmailInput = document.getElementById('submitter-email') as HTMLInputElement;
+      const form = document.getElementById('correction-form') as HTMLFormElement;
+      const formStatusEl = document.getElementById('form-status') as HTMLElement;
+      const logStatusEl = document.getElementById('log-status') as HTMLElement;
+      const logEl = document.getElementById('correction-log') as HTMLElement;
+
+      // Pre-fill the reference note when arriving from a digest item's
+      // "Reportar um problema" link — the verdict_id travels with the
+      // submission too, tying the request to that specific published item.
+      const params = new URLSearchParams(window.location.search);
+      const verdictIdParam = params.get('verdict_id');
+      const tituloParam = params.get('titulo');
+      let prefilledVerdictId: number | null = null;
+      if (verdictIdParam && tituloParam) {
+        prefilledVerdictId = Number(verdictIdParam);
+        referenceNoteInput.value = `Veredicto #${verdictIdParam}: ${tituloParam}`;
+      }
+
+      function formatDate(date: string): string {
+        return new Date(date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+
+      function renderLogEntry(entry: CorrectionRequest): HTMLElement {
+        const li = document.createElement('li');
+
+        const heading = document.createElement('p');
+        heading.textContent = `${formatDate(entry.submittedAt)} — ${entry.referenceNote} — ${STATUS_NAMES[entry.status] ?? entry.status}`;
+        li.appendChild(heading);
+
+        const description = document.createElement('p');
+        description.textContent = entry.description;
+        li.appendChild(description);
+
+        if (entry.resolutionNotes) {
+          const resolution = document.createElement('p');
+          resolution.textContent = `Resolução: ${entry.resolutionNotes}`;
+          li.appendChild(resolution);
+        }
+
+        return li;
+      }
+
+      async function loadLog() {
+        const { data, error } = await supabase
+          .from('public_correction_requests')
+          .select('*')
+          .limit(200);
+
+        if (error) {
+          logStatusEl.textContent = `Erro ao carregar o registo: ${error.message}`;
+          return;
+        }
+
+        const entries = (data ?? []).map(rowToCorrectionRequest);
+        logEl.replaceChildren();
+        if (entries.length === 0) {
+          logStatusEl.textContent = 'Ainda não há pedidos de correção.';
+          return;
+        }
+        logStatusEl.textContent = '';
+        for (const entry of entries) {
+          logEl.appendChild(renderLogEntry(entry));
+        }
+      }
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        formStatusEl.textContent = '';
+
+        let insertRow;
+        try {
+          insertRow = buildCorrectionInsert(
+            referenceNoteInput.value,
+            descriptionInput.value,
+            submitterEmailInput.value,
+            prefilledVerdictId,
+          );
+        } catch (err) {
+          formStatusEl.textContent = err instanceof Error ? err.message : String(err);
+          return;
+        }
+
+        const { error } = await supabase.from('correction_requests').insert(insertRow);
+        if (error) {
+          formStatusEl.textContent = `Erro ao enviar o pedido: ${error.message}`;
+          return;
+        }
+
+        formStatusEl.textContent = 'Pedido enviado. Obrigado.';
+        form.reset();
+        await loadLog();
+      });
+
+      await loadLog();
+    </script>
+  </body>
+</html>
