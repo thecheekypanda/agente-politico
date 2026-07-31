@@ -7,7 +7,8 @@
     "prebuild": "npm run export:methodology --workspace=pipeline",
     "build": "astro check && astro build",
     "preview": "astro preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:a11y": "PUBLIC_SUPABASE_URL=http://localhost:54321 PUBLIC_SUPABASE_ANON_KEY=test-anon-key npm run build && playwright test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
@@ -15,6 +16,8 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.62.1",
     "typescript": "^5.6.3",
     "vitest": "^4.1.10"
   }

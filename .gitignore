@@ -9,3 +9,7 @@ dist/
 # Generated fresh by pipeline/src/export-methodology.ts on every web build
 # (web/package.json's "prebuild" script) — not source, same category as dist/.
 web/src/data/methodology.json
+
+# Playwright's own output from running web/test/a11y.spec.ts.
+web/test-results/
+web/playwright-report/

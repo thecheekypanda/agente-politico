@@ -92,6 +92,51 @@ const LABEL_NAMES: Record<string, string> = {
           ))}
         </tbody>
       </table>
+
+      <h2>Fontes de dados</h2>
+      <ul>
+        <li>
+          <strong>api.openar.pt</strong> — espelho comunitário usado para obter iniciativas,
+          votações e outros dados rapidamente. Não é a fonte de citação: serve apenas para
+          recuperação, nunca para o link final mostrado a um leitor.
+        </li>
+        <li>
+          <strong>parlamento.pt (Dados Abertos)</strong> — a fonte de citação canónica. Toda a
+          citação mostrada a um leitor tem de resolver para aqui, não apenas para o ID do openAR.
+        </li>
+        <li>
+          <strong>PDFs dos programas eleitorais dos partidos</strong> — publicados no domínio
+          oficial de cada partido, o corpus de referência do motor de alinhamento.
+        </li>
+        <li>
+          <strong>Diário da República (decretos-lei)</strong> — não existe API oficial; a
+          ingestão está deliberadamente diferida (ver <code>docs/BACKLOG.md</code>, item 1.5).
+        </li>
+      </ul>
+
+      <h2>Classificação determinística</h2>
+      <p>
+        O tipo de iniciativa e o resultado da votação nunca são decididos por um modelo — vêm
+        diretamente dos campos da fonte de dados. As únicas duas etapas que envolvem um modelo de
+        IA são a classificação por tópico e a redação do veredicto de alinhamento, ambas descritas
+        acima.
+      </p>
+
+      <h2>Revisão humana obrigatória</h2>
+      <p>
+        Nenhum veredicto chega a esta página, ou a qualquer página pública, sem um humano o ter
+        aprovado (ou corrigido) explicitamente. Cada aprovação é registada com a identidade do
+        revisor e a data/hora — sem excepções. Não existe nenhum caminho de código entre um
+        veredicto proposto por um modelo e uma página pública que salte esta etapa.
+      </p>
+
+      <h2>Citações</h2>
+      <p>
+        Toda a citação de uma iniciativa mostrada a um leitor resolve para o URL oficial em
+        parlamento.pt (Dados Abertos) — nunca apenas para o ID do openAR. Se o programa de um
+        partido não abordar um tópico, o sistema diz exactamente isso ("não abordado no
+        programa") em vez de inferir uma posição.
+      </p>
     </main>
   </body>
 </html>

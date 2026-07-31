@@ -18,3 +18,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
+      - name: Install Playwright's Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Accessibility checks (axe-core / WCAG 2.1 AA)
+        run: npm run test:a11y --workspace=web

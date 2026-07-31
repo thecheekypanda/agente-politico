@@ -216,18 +216,23 @@ const title = 'O Que Fizeram';
         const toggle = document.createElement('button');
         toggle.type = 'button';
         toggle.textContent = 'Ver detalhe';
+        toggle.setAttribute('aria-expanded', 'false');
         li.appendChild(toggle);
 
+        // aria-expanded reflects this disclosure button's state
+        // programmatically, not just via its visible text (WCAG 4.1.2).
         let detailEl: HTMLElement | null = null;
         toggle.addEventListener('click', () => {
           if (detailEl) {
             detailEl.hidden = !detailEl.hidden;
             toggle.textContent = detailEl.hidden ? 'Ver detalhe' : 'Esconder detalhe';
+            toggle.setAttribute('aria-expanded', String(!detailEl.hidden));
             return;
           }
           detailEl = renderDetail(item);
           li.appendChild(detailEl);
           toggle.textContent = 'Esconder detalhe';
+          toggle.setAttribute('aria-expanded', 'true');
         });
 
         return li;
