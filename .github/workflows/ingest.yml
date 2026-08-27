@@ -62,6 +62,16 @@ jobs:
         if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' && env.ANTHROPIC_API_KEY != '' }}
         run: npm run ingest:topics --workspace=pipeline
 
+      - name: Draft verdicts (Claude Haiku 4.5 batch)
+        # Reads topic-tagged iniciativas the previous step just produced.
+        # Only ever drafts the addressed-case labels (aligned/partially_aligned/
+        # contradicts) — the not_addressed case is decided deterministically
+        # beforehand, never by the model (backlog 3.3). These are drafts only:
+        # nothing here is visible anywhere public until a human approves it
+        # at /review (backlog 3.4) — see CLAUDE.md's no-auto-publish constraint.
+        if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' && env.ANTHROPIC_API_KEY != '' }}
+        run: npm run draft:verdicts --workspace=pipeline
+
       - name: Supabase not configured yet
         if: ${{ env.SUPABASE_URL == '' || env.SUPABASE_SERVICE_ROLE_KEY == '' }}
         run: |
