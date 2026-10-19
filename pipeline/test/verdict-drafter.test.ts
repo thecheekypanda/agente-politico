@@ -111,19 +111,19 @@ class FakeVerdictStore implements VerdictStore {
 
 describe('parseVerdictResult', () => {
   it('accepts a clean, schema-compliant success', () => {
-    expect(parseVerdictResult({ custom_id: '1:PS', result: succeeded('aligned') })).toEqual({
+    expect(parseVerdictResult({ custom_id: '1_PS', result: succeeded('aligned') })).toEqual({
       label: 'aligned',
       rationale: 'justificação breve',
     });
   });
 
   it('rejects a non-succeeded result', () => {
-    expect(parseVerdictResult({ custom_id: '1:PS', result: errored() })).toBeNull();
+    expect(parseVerdictResult({ custom_id: '1_PS', result: errored() })).toBeNull();
   });
 
   it('rejects a refusal or truncated completion even if content is present', () => {
-    expect(parseVerdictResult({ custom_id: '1:PS', result: succeeded('aligned', 'x', 'refusal') })).toBeNull();
-    expect(parseVerdictResult({ custom_id: '1:PS', result: succeeded('aligned', 'x', 'max_tokens') })).toBeNull();
+    expect(parseVerdictResult({ custom_id: '1_PS', result: succeeded('aligned', 'x', 'refusal') })).toBeNull();
+    expect(parseVerdictResult({ custom_id: '1_PS', result: succeeded('aligned', 'x', 'max_tokens') })).toBeNull();
   });
 
   it('rejects malformed JSON instead of throwing', () => {
@@ -131,19 +131,19 @@ describe('parseVerdictResult', () => {
       type: 'succeeded',
       message: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'not json' }] },
     };
-    expect(parseVerdictResult({ custom_id: '1:PS', result })).toBeNull();
+    expect(parseVerdictResult({ custom_id: '1_PS', result })).toBeNull();
   });
 
   it('rejects a label outside the addressed-only list — including not_addressed itself', () => {
     // The json_schema enum should make this structurally impossible from
     // the real API, but the defensive check must catch it regardless — the
     // LLM must never be the one deciding "not_addressed".
-    expect(parseVerdictResult({ custom_id: '1:PS', result: succeeded('not_addressed') })).toBeNull();
-    expect(parseVerdictResult({ custom_id: '1:PS', result: succeeded('astrologia') })).toBeNull();
+    expect(parseVerdictResult({ custom_id: '1_PS', result: succeeded('not_addressed') })).toBeNull();
+    expect(parseVerdictResult({ custom_id: '1_PS', result: succeeded('astrologia') })).toBeNull();
   });
 
   it('rejects an empty rationale', () => {
-    expect(parseVerdictResult({ custom_id: '1:PS', result: succeeded('aligned', '') })).toBeNull();
+    expect(parseVerdictResult({ custom_id: '1_PS', result: succeeded('aligned', '') })).toBeNull();
   });
 });
 
@@ -177,7 +177,7 @@ describe('draftVerdicts', () => {
       new Map([['PS:Habitação', [{ pageNumber: 5, content: 'Medidas para a habitação acessível.', rank: 0.4 }]]]),
     );
     const client = new FakeAnthropicBatchClient({
-      '1:PS': [succeeded('aligned', 'A iniciativa concretiza a medida do programa.')],
+      '1_PS': [succeeded('aligned', 'A iniciativa concretiza a medida do programa.')],
     });
 
     const result = await draftVerdicts(store, chunksStore, client);
@@ -198,7 +198,7 @@ describe('draftVerdicts', () => {
       new Map([['PS:Habitação', [{ pageNumber: 5, content: 'passagem', rank: 0.4 }]]]),
     );
     const client = new FakeAnthropicBatchClient({
-      '1:PS': [errored(), succeeded('partially_aligned')],
+      '1_PS': [errored(), succeeded('partially_aligned')],
     });
 
     const result = await draftVerdicts(store, chunksStore, client);
@@ -218,8 +218,8 @@ describe('draftVerdicts', () => {
       ]),
     );
     const client = new FakeAnthropicBatchClient({
-      '1:PS': [errored(), errored()],
-      '2:CH': [succeeded('contradicts')],
+      '1_PS': [errored(), errored()],
+      '2_CH': [succeeded('contradicts')],
     });
 
     const result = await draftVerdicts(store, chunksStore, client);
@@ -236,7 +236,7 @@ describe('draftVerdicts', () => {
       new Map([['PS:Habitação', [{ pageNumber: 5, content: 'passagem', rank: 0.4 }]]]),
     );
     const client = new FakeAnthropicBatchClient({
-      '1:PS': [errored(), errored()],
+      '1_PS': [errored(), errored()],
     });
 
     await expect(draftVerdicts(store, chunksStore, client)).rejects.toThrow(/Anthropic/i);
@@ -269,7 +269,7 @@ describe('draftVerdicts', () => {
       new Map([['PS:Habitação', [{ pageNumber: 5, content: 'passagem', rank: 0.4 }]]]),
     );
     const client = new FakeAnthropicBatchClient({
-      '1:PS': [succeeded('aligned')],
+      '1_PS': [succeeded('aligned')],
     });
 
     await draftVerdicts(store, chunksStore, client);

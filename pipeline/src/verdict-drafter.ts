@@ -34,8 +34,11 @@ function initiativeSummary(pending: PendingVerdict): string {
     .join('\n');
 }
 
+// Batch API custom_id must match ^[a-zA-Z0-9_-]{1,64}$ — a colon separator
+// was rejected outright in production (2026-10-19). Party labels are plain
+// alphanumeric (PS, AD, CH, ...), so '_' is always unambiguous.
 function customId(pending: PendingVerdict): string {
-  return `${pending.iniciativaId}:${pending.partyLabel}`;
+  return `${pending.iniciativaId}_${pending.partyLabel}`;
 }
 
 interface AddressedItem {
