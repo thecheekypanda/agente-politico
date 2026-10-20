@@ -2,6 +2,8 @@
 
 This file is read automatically by Claude Code at the start of every session in this repo. Keep it up to date as decisions change — it is the single source of truth for constraints that must never be relaxed by accident.
 
+**Start every session by reading `STATUS.md`** — the live, current-state doc (what's actually deployed, what real data exists, what account-level steps are still pending). This file covers constraints that never change; `STATUS.md` covers what's true right now.
+
 ## What this project is
 
 A public-interest web app that (1) translates Portuguese parliamentary/government activity into plain-language weekly digests per party, tagged against that party's official program (aligned / partially aligned / contradicts / not addressed), and (2) teaches civic literacy about how the Portuguese state works. Full strategy doc: `docs/strategy.md` (copy the strategy markdown here before the first session).
