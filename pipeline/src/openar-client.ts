@@ -19,7 +19,23 @@ const FALLBACK_RETRY_DELAY_MS = 2000;
 
 async function fetchOpenAR(fetchImpl: typeof fetch, input: string | URL): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
-    const response = await fetchImpl(input, { headers: { Accept: 'application/json' } });
+    let response: Response;
+    try {
+      response = await fetchImpl(input, { headers: { Accept: 'application/json' } });
+    } catch (err) {
+      // A thrown network error (ECONNRESET, DNS hiccup, etc.) is just as
+      // transient as a 429 and observed in production (2026-10-19) — retry
+      // it the same bounded number of times instead of crashing the job.
+      if (attempt >= MAX_RATE_LIMIT_RETRIES) {
+        throw err;
+      }
+      const waitMs = FALLBACK_RETRY_DELAY_MS * 2 ** attempt;
+      console.warn(
+        `openAR request failed (${(err as Error).message}) for ${input} — retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/${MAX_RATE_LIMIT_RETRIES})`,
+      );
+      await sleep(waitMs);
+      continue;
+    }
     if (response.status !== 429 || attempt >= MAX_RATE_LIMIT_RETRIES) {
       return response;
     }

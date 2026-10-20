@@ -155,6 +155,11 @@ Another account-level step only you can do. Until this is done, the nightly inge
    - `20260727020000_iniciativas_canonical_url_index.sql`
    - `20260727030000_party_programs.sql`
    - `20260730000000_iniciativas_topic.sql`
+   - `20260731000000_verdicts.sql`
+   - `20260801000000_verdict_reviews.sql`
+   - `20260802000000_public_digest.sql`
+   - `20260803000000_digest_drill_down.sql`
+   - `20260804000000_correction_requests.sql`
 
    Run any new migration files the same way as they're added.
 4. Get your credentials: **Project Settings** (gear icon) → **API**.
@@ -178,6 +183,40 @@ The topic-tagging step (and later the alignment engine) calls the Claude API. Un
 2. Add it as a GitHub Actions secret the same way as the Supabase ones: repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret** → name it `ANTHROPIC_API_KEY`.
 3. (Optional, for local testing) add it to your `.env` file alongside the Supabase values, then run `npx tsx --env-file=.env pipeline/src/ingest-topics.ts`.
 4. To confirm it worked: check the `topic` column on rows in the `iniciativas` table in Supabase's Table Editor.
+
+## Step 13 — Set up the reviewer gate (needed for backlog 3.4+)
+
+Every draft verdict needs a signed-in human to approve, edit, or reject it before it can ever be published — there's no code path around this. That means each reviewer needs their own Supabase Auth account, and the frontend needs the public (not service-role) API key.
+
+1. **Create one account per reviewer, don't allow public sign-up:** Supabase dashboard → **Authentication** → **Users** → **Add user** → **Invite**, once per reviewer. Then **Authentication** → **Providers** → **Email** → turn off "Allow new users to sign up" — this is a small, individually-provisioned reviewer roster, not a public registration flow.
+2. Get the public key: **Project Settings** → **API** → **anon** / **public** key (the *other* one from Step 11 — never the service-role key here, since this one ships to the browser).
+3. Create a `.env` file inside `web/` (also already gitignored) with:
+   ```
+   PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+   PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+   ```
+4. Run `npm run dev --workspace=web` and open `http://localhost:4321/review`. Sign in with a reviewer's email (a magic link is emailed by Supabase Auth), then follow the link back to the same page.
+5. To confirm it worked: after 3.3 has drafted at least one verdict, it should show up in the queue at `/review` with the initiative, the citation, the program passage, and the draft label — approving or rejecting it should make it disappear from the queue and appear as a row in the `verdict_reviews` table in Supabase's Table Editor.
+
+## Step 14 — Nothing extra needed for the public homepage (backlog 4.1+)
+
+The homepage at `/` uses the same `PUBLIC_SUPABASE_URL` / `PUBLIC_SUPABASE_ANON_KEY` from Step 13 — no new setup. It shows one card per party per week, built only from verdicts a reviewer has approved at `/review`; nothing else is ever readable by a visitor. To confirm it worked: approve at least one verdict, then reload `/` — a card for that party and the initiative's own week should appear, and rejected/pending verdicts should never show up there no matter how long you wait.
+
+## Step 15 — Fill in the privacy notice, and (optional) set up analytics (needed for backlog B.1)
+
+1. **Before launch**, edit `web/src/pages/privacidade.astro` and replace the `[a preencher pelo operador antes do lançamento — ver GETTING_STARTED.md]` placeholder with the real name/contact of whoever is responsible for handling data-subject requests (access, correction, erasure). This repo is public, so don't commit a personal email you don't want public unless that's genuinely how you want to be reachable — a dedicated project email/alias works too.
+2. **(Optional) Cloudflare Web Analytics** — cookie-free, no consent banner needed, and needs no server of its own (unlike self-hosting Plausible/Umami): Cloudflare dashboard → **Analytics & Logs** → **Web Analytics** → **Add a site**, paste your Cloudflare Pages domain, and copy the token from the generated snippet (the `token` value inside `data-cf-beacon`).
+3. Add it to `web/.env` (alongside the Supabase values from Step 13) as `PUBLIC_CF_ANALYTICS_TOKEN=your-token`, and also add it as a Cloudflare Pages environment variable (Pages project → **Settings** → **Environment variables**) so production builds pick it up too.
+4. Without this token set, `Analytics.astro` renders nothing at all — no tracking of any kind happens by default.
+
+## Step 16 — Resolving a correction request (needed for backlog B.2)
+
+Anyone can submit a correction request at `/correcoes` — no setup needed for that, it works the moment the Step 11 migrations are applied. Resolving one is a manual step, the same way fixing a mis-submitted review is (Step 13):
+
+1. Supabase dashboard → **Table Editor** → `correction_requests`.
+2. Find the row, and edit `status` (to `resolved` or `rejected`), `resolution_notes` (this text is public — write it for the reader, not just for your own records), and `resolved_at` (set to now).
+3. The submitter's `submitter_email` column is visible here in the dashboard (via your project-owner access) so you can follow up with them directly if they left one — it's never exposed through the site itself.
+4. Refresh `/correcoes` to confirm the resolution now shows in the public log.
 
 ## A few habits worth keeping
 

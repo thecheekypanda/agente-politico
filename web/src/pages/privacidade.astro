@@ -1,0 +1,66 @@
+---
+import Analytics from '../components/Analytics.astro';
+
+const title = 'Privacidade — O Que Fizeram';
+---
+
+<html lang="pt-PT">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <Analytics />
+  </head>
+  <body>
+    <main>
+      <h1>Privacidade</h1>
+
+      <h2>Quem é o responsável por este projeto</h2>
+      <p>
+        Este é um projeto pessoal/independente, operando de forma informal e sem estrutura
+        jurídica própria (não é um órgão de comunicação social registado). O responsável pelo
+        tratamento de dados é: <em>[a preencher pelo operador antes do lançamento — ver
+        GETTING_STARTED.md]</em>.
+      </p>
+
+      <h2>Que dados são tratados</h2>
+      <ul>
+        <li>
+          <strong>Visitas ao site:</strong> estatísticas agregadas e anónimas através do Cloudflare
+          Web Analytics, que não usa cookies nem qualquer identificador que permita seguir uma
+          pessoa entre sites. Nenhum comportamento de leitura individual é associado a uma
+          identidade.
+        </li>
+        <li>
+          <strong>Contas de revisores:</strong> os revisores humanos que aprovam ou rejeitam
+          veredictos autenticam-se com o seu email através do Supabase Auth. Este dado é usado
+          apenas para identificar quem aprovou cada veredicto (ver <a href="/methodology">metodologia</a>)
+          e nunca é publicado.
+        </li>
+        <li>
+          <strong>Pedidos de correção:</strong> ao submeter um pedido em <a href="/correcoes">/correcoes</a>,
+          o texto do pedido e a sua resolução são publicados — o seu email, se o indicar, é
+          opcional, usado apenas para lhe dar seguimento, e nunca é publicado.
+        </li>
+      </ul>
+
+      <h2>Os seus direitos</h2>
+      <p>
+        Nos termos do RGPD, tem direito a aceder, corrigir ou solicitar o apagamento de dados
+        pessoais que nos tenha fornecido (por exemplo, o email associado a um pedido de correção).
+        Para exercer estes direitos, contacte o responsável indicado acima.
+      </p>
+
+      <h2>Cookies</h2>
+      <p>
+        Este site não define cookies. O Cloudflare Web Analytics funciona sem cookies.
+      </p>
+
+      <h2>Sem publicidade, sem perfis</h2>
+      <p>
+        Não existem anúncios, não existe qualquer forma de perfilamento de leitores, e não são
+        usados serviços de terceiros além do Cloudflare Web Analytics descrito acima.
+      </p>
+    </main>
+  </body>
+</html>

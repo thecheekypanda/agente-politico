@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fetchAllIniciativas, fetchIniciativaById } from '../src/openar-client.js';
 import type { Iniciativa } from '../src/schemas/iniciativa.js';
+
+// Network-error retries (unlike the 429 path) always wait a real
+// FALLBACK_RETRY_DELAY_MS-based backoff rather than a mockable Retry-After
+// of 0 — stub it out so those tests don't eat multiple real seconds each.
+vi.mock('../src/sleep.js', () => ({ sleep: () => Promise.resolve() }));
 
 function sampleIniciativa(overrides: Partial<Iniciativa> = {}): Iniciativa {
   return {
@@ -136,6 +141,34 @@ describe('fetchAllIniciativas', () => {
     };
 
     await expect(fetchAllIniciativas({ fetchImpl })).rejects.toThrow(/429/);
+    expect(calls).toBe(4); // initial attempt + 3 retries
+  });
+
+  it('retries a thrown network error (e.g. ECONNRESET) and succeeds once it clears', async () => {
+    // Regression coverage for production (2026-10-19): a connection reset
+    // mid-request threw instead of returning a response, which the 429-only
+    // retry check skipped entirely and crashed the whole ingestion job.
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('fetch failed: read ECONNRESET');
+      return jsonResponse({ data: [sampleIniciativa()], total: 1, page: 1, limit: 200 });
+    };
+
+    const result = await fetchAllIniciativas({ fetchImpl });
+
+    expect(calls).toBe(2);
+    expect(result).toHaveLength(1);
+  });
+
+  it('gives up and throws after repeated network errors instead of retrying forever', async () => {
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      throw new Error('fetch failed: read ECONNRESET');
+    };
+
+    await expect(fetchAllIniciativas({ fetchImpl })).rejects.toThrow(/ECONNRESET/);
     expect(calls).toBe(4); // initial attempt + 3 retries
   });
 });

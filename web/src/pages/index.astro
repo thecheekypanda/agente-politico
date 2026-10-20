@@ -1,4 +1,6 @@
 ---
+import Analytics from '../components/Analytics.astro';
+
 const title = 'O Que Fizeram';
 ---
 
@@ -7,11 +9,375 @@ const title = 'O Que Fizeram';
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
+    <Analytics />
   </head>
   <body>
     <main>
       <h1>{title}</h1>
-      <p>Em construção. Resumos semanais da atividade parlamentar portuguesa, em breve.</p>
+      <p>
+        Resumos semanais da atividade parlamentar portuguesa, comparada com o programa eleitoral
+        de cada partido. Cada etiqueta abaixo já foi revista e aprovada por um humano — nada aqui
+        é publicado diretamente por um modelo de IA. Ver a <a href="/methodology">metodologia</a>,
+        o <a href="/glossario">glossário</a>, os <a href="/explicadores">explicadores</a>,
+        a <a href="/privacidade">política de privacidade</a> ou como
+        <a href="/correcoes">pedir uma correção</a>.
+      </p>
+      <form id="filters" hidden>
+        <fieldset>
+          <legend>Partidos</legend>
+          <div id="party-checkboxes"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Semana</legend>
+          <label for="from-week">De</label>
+          <input type="date" id="from-week" name="from-week" />
+          <label for="to-week">Até</label>
+          <input type="date" id="to-week" name="to-week" />
+        </fieldset>
+        <button id="clear-filters" type="button">Limpar filtros</button>
+      </form>
+      <p id="digest-status" role="status">A carregar...</p>
+      <div id="digest"></div>
     </main>
+
+    <script>
+      import { supabase } from '../lib/supabase-client';
+      import {
+        filterDigestRows,
+        groupDigestItems,
+        rowToDigestItem,
+        type DigestCard,
+        type DigestItem,
+        type DigestRow,
+      } from '../lib/digest';
+      import { derivePartyVotePosition, rowToVotacao, type VotacaoRow } from '../lib/votes';
+      import { findGlossaryTerm } from '../lib/glossary';
+
+      const LABEL_NAMES: Record<string, string> = {
+        aligned: 'Alinhado',
+        partially_aligned: 'Parcialmente alinhado',
+        contradicts: 'Contradiz',
+        not_addressed: 'Não abordado no programa',
+      };
+
+      const VOTE_POSITION_NAMES: Record<string, string> = {
+        favor: 'A Favor',
+        contra: 'Contra',
+        abstencao: 'Abstenção',
+        ausencia: 'Ausência',
+        nao_registado: 'Não registado',
+      };
+
+      const digestEl = document.getElementById('digest') as HTMLElement;
+      const statusEl = document.getElementById('digest-status') as HTMLElement;
+      const filtersEl = document.getElementById('filters') as HTMLElement;
+      const partyCheckboxesEl = document.getElementById('party-checkboxes') as HTMLElement;
+      const fromWeekInput = document.getElementById('from-week') as HTMLInputElement;
+      const toWeekInput = document.getElementById('to-week') as HTMLInputElement;
+      const clearFiltersButton = document.getElementById('clear-filters') as HTMLButtonElement;
+
+      // Populated once after the initial fetch; filtering/re-rendering
+      // below never refetches — backlog 4.3 is purely a client-side view
+      // over the data public_digest already returned once.
+      let allRows: DigestRow[] = [];
+
+      function formatDate(date: string): string {
+        return new Date(`${date}T00:00:00Z`).toLocaleDateString('pt-PT', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+      }
+
+      // Wherever a piece of controlled-vocabulary text (an initiative
+      // type, a vote description) exactly matches a glossary term, link it
+      // to the glossary instead of rendering plain text — journey 3 in
+      // docs/o-que-fizeram-strategy.md. Exact match only, never a
+      // substring scan (see web/src/lib/glossary.ts).
+      function appendMaybeGlossaryLink(parent: HTMLElement, text: string) {
+        const entry = findGlossaryTerm(text);
+        if (!entry) {
+          parent.appendChild(document.createTextNode(text));
+          return;
+        }
+        const link = document.createElement('a');
+        link.href = `/glossario#${entry.slug}`;
+        link.textContent = text;
+        parent.appendChild(link);
+      }
+
+      function formatWeek(weekStart: string): string {
+        const start = new Date(`${weekStart}T00:00:00Z`);
+        const end = new Date(start);
+        end.setUTCDate(end.getUTCDate() + 6);
+        const fmt = (d: Date) => d.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
+        return `${fmt(start)} – ${fmt(end)}`;
+      }
+
+      // Fetched lazily, once per item, on first expand — the vote-result
+      // block is the only part of the detail panel that needs a second
+      // network round trip.
+      const votacoesCache = new Map<number, VotacaoRow[]>();
+
+      async function fetchVotacoes(iniciativaId: number): Promise<VotacaoRow[]> {
+        const cached = votacoesCache.get(iniciativaId);
+        if (cached) return cached;
+
+        const { data, error } = await supabase.from('votacoes').select('*').eq('iniciativa_id', iniciativaId);
+        if (error) {
+          throw new Error(error.message);
+        }
+        const rows = (data ?? []).map(rowToVotacao);
+        votacoesCache.set(iniciativaId, rows);
+        return rows;
+      }
+
+      function renderVoteResult(votos: VotacaoRow[], arSiglas: string[]): HTMLElement {
+        const container = document.createElement('div');
+        if (votos.length === 0) {
+          container.textContent = 'Sem votação registada para esta iniciativa.';
+          return container;
+        }
+
+        const list = document.createElement('ul');
+        for (const voto of votos) {
+          const li = document.createElement('li');
+          const dataStr = voto.data ? formatDate(voto.data) : 'data desconhecida';
+          // One line per AR sigla — a coalition (e.g. AD = PSD + CDS-PP)
+          // never gets a single merged position; if the two groups voted
+          // differently, both show up separately, exactly as recorded.
+          const positions = arSiglas
+            .map((sigla) => `${sigla}: ${VOTE_POSITION_NAMES[derivePartyVotePosition(voto, sigla)]}`)
+            .join(' · ');
+          li.appendChild(document.createTextNode(`${dataStr} — ${voto.resultado} (`));
+          if (voto.descricao) {
+            appendMaybeGlossaryLink(li, voto.descricao);
+          } else {
+            li.appendChild(document.createTextNode('sem descrição'));
+          }
+          li.appendChild(document.createTextNode(`) — ${positions}`));
+          list.appendChild(li);
+        }
+        container.appendChild(list);
+        return container;
+      }
+
+      function renderDetail(item: DigestItem): HTMLElement {
+        const detail = document.createElement('div');
+
+        const citation = document.createElement('p');
+        appendMaybeGlossaryLink(citation, item.tipoDesc);
+        citation.appendChild(
+          document.createTextNode(
+            ` n.º ${item.numero}` + (item.dataEntrada ? ` · ${formatDate(item.dataEntrada)}` : ''),
+          ),
+        );
+        detail.appendChild(citation);
+
+        if (item.canonicalUrl) {
+          const link = document.createElement('a');
+          link.href = item.canonicalUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'Ver iniciativa em parlamento.pt';
+          detail.appendChild(link);
+        }
+
+        const voteHeading = document.createElement('h4');
+        voteHeading.textContent = 'Resultado da votação';
+        detail.appendChild(voteHeading);
+
+        const voteContainer = document.createElement('div');
+        voteContainer.textContent = 'A carregar...';
+        detail.appendChild(voteContainer);
+        fetchVotacoes(item.iniciativaId)
+          .then((votos) => voteContainer.replaceWith(renderVoteResult(votos, item.arSiglas)))
+          .catch((err) => {
+            voteContainer.textContent = `Erro ao carregar a votação: ${err instanceof Error ? err.message : String(err)}`;
+          });
+
+        if (item.quotedPassage) {
+          const passageHeading = document.createElement('h4');
+          passageHeading.textContent = `Passagem do programa (página ${item.citationPageNumber})`;
+          detail.appendChild(passageHeading);
+
+          const passage = document.createElement('blockquote');
+          passage.textContent = item.quotedPassage;
+          detail.appendChild(passage);
+
+          const programLink = document.createElement('a');
+          programLink.href = item.programSourceUrl;
+          programLink.target = '_blank';
+          programLink.rel = 'noopener noreferrer';
+          programLink.textContent = 'Ver programa eleitoral';
+          detail.appendChild(programLink);
+        }
+
+        if (item.rationale) {
+          const rationaleHeading = document.createElement('h4');
+          rationaleHeading.textContent = 'Porque este veredicto';
+          detail.appendChild(rationaleHeading);
+
+          const rationale = document.createElement('p');
+          rationale.textContent = item.rationale;
+          detail.appendChild(rationale);
+        }
+
+        const reportLink = document.createElement('a');
+        reportLink.href = `/correcoes?verdict_id=${item.verdictId}&titulo=${encodeURIComponent(item.titulo)}`;
+        reportLink.textContent = 'Reportar um problema com este veredicto';
+        detail.appendChild(reportLink);
+
+        return detail;
+      }
+
+      function renderItem(item: DigestItem): HTMLElement {
+        const li = document.createElement('li');
+
+        const summary = document.createElement('p');
+        const labelChip = document.createElement('strong');
+        labelChip.textContent = LABEL_NAMES[item.label] ?? item.label;
+        summary.appendChild(labelChip);
+        summary.appendChild(document.createTextNode(' — '));
+
+        if (item.canonicalUrl) {
+          const link = document.createElement('a');
+          link.href = item.canonicalUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = item.titulo;
+          summary.appendChild(link);
+        } else {
+          summary.appendChild(document.createTextNode(item.titulo));
+        }
+        summary.appendChild(document.createTextNode(' ('));
+        appendMaybeGlossaryLink(summary, item.tipoDesc);
+        summary.appendChild(document.createTextNode(` · ${item.topic})`));
+        li.appendChild(summary);
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.textContent = 'Ver detalhe';
+        toggle.setAttribute('aria-expanded', 'false');
+        li.appendChild(toggle);
+
+        // aria-expanded reflects this disclosure button's state
+        // programmatically, not just via its visible text (WCAG 4.1.2).
+        let detailEl: HTMLElement | null = null;
+        toggle.addEventListener('click', () => {
+          if (detailEl) {
+            detailEl.hidden = !detailEl.hidden;
+            toggle.textContent = detailEl.hidden ? 'Ver detalhe' : 'Esconder detalhe';
+            toggle.setAttribute('aria-expanded', String(!detailEl.hidden));
+            return;
+          }
+          detailEl = renderDetail(item);
+          li.appendChild(detailEl);
+          toggle.textContent = 'Esconder detalhe';
+          toggle.setAttribute('aria-expanded', 'true');
+        });
+
+        return li;
+      }
+
+      function renderCard(card: DigestCard): HTMLElement {
+        const article = document.createElement('article');
+
+        const heading = document.createElement('h2');
+        heading.textContent = `${card.partyName} — semana de ${formatWeek(card.weekStart)}`;
+        article.appendChild(heading);
+
+        const list = document.createElement('ul');
+        for (const item of card.items) {
+          list.appendChild(renderItem(item));
+        }
+        article.appendChild(list);
+
+        return article;
+      }
+
+      function buildPartyCheckboxes(rows: DigestRow[]) {
+        // Only parties actually present in the fetched data get a
+        // checkbox — never an empty option for a party with zero approved
+        // verdicts yet.
+        const parties = new Map<string, string>();
+        for (const row of rows) {
+          parties.set(row.partyLabel, row.partyName);
+        }
+
+        partyCheckboxesEl.replaceChildren();
+        for (const [label, name] of parties) {
+          const wrapper = document.createElement('label');
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = label;
+          checkbox.checked = true;
+          checkbox.addEventListener('change', render);
+          wrapper.appendChild(checkbox);
+          wrapper.appendChild(document.createTextNode(` ${name}`));
+          partyCheckboxesEl.appendChild(wrapper);
+        }
+      }
+
+      function selectedPartyLabels(): Set<string> {
+        const checked = partyCheckboxesEl.querySelectorAll('input[type="checkbox"]:checked');
+        return new Set([...checked].map((el) => (el as HTMLInputElement).value));
+      }
+
+      function render() {
+        const filtered = filterDigestRows(allRows, {
+          partyLabels: selectedPartyLabels(),
+          fromWeek: fromWeekInput.value || undefined,
+          toWeek: toWeekInput.value || undefined,
+        });
+        const cards = groupDigestItems(filtered);
+
+        digestEl.replaceChildren();
+        if (cards.length === 0) {
+          statusEl.textContent =
+            allRows.length === 0
+              ? 'Ainda não há veredictos aprovados publicados.'
+              : 'Nenhum resultado para estes filtros.';
+          return;
+        }
+        statusEl.textContent = '';
+        for (const card of cards) {
+          digestEl.appendChild(renderCard(card));
+        }
+      }
+
+      clearFiltersButton.addEventListener('click', () => {
+        for (const checkbox of partyCheckboxesEl.querySelectorAll('input[type="checkbox"]')) {
+          (checkbox as HTMLInputElement).checked = true;
+        }
+        fromWeekInput.value = '';
+        toWeekInput.value = '';
+        render();
+      });
+      fromWeekInput.addEventListener('change', render);
+      toWeekInput.addEventListener('change', render);
+
+      async function loadDigest() {
+        const { data, error } = await supabase
+          .from('public_digest')
+          .select('*')
+          .order('week_start', { ascending: false })
+          .limit(200);
+
+        if (error) {
+          statusEl.textContent = `Erro ao carregar o resumo: ${error.message}`;
+          return;
+        }
+
+        allRows = (data ?? []).map(rowToDigestItem);
+        if (allRows.length > 0) {
+          filtersEl.hidden = false;
+          buildPartyCheckboxes(allRows);
+        }
+        render();
+      }
+
+      await loadDigest();
+    </script>
   </body>
 </html>

@@ -4,7 +4,7 @@ Each block below is written to be pasted directly into a GitHub issue (title as 
 
 Legend — Priority: Must / Should / Could (MoSCoW). Size: S / M / L (T-shirt).
 
-**Progress (updated 2026-07-30):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Phase 2 (2.1, 2.2) is done — party program PDFs are chunked/indexed with Postgres full-text search, with a "not addressed" default for off-topic or low-confidence retrieval. Phase 3 (alignment engine, highest risk) is underway: 3.1 (deterministic type/vote-position classification) and 3.2 (closed-list topic-tagging via Claude Haiku 4.5 Batch API, structurally constrained to a fixed ~29-topic list) are done. Next: 3.3 (verdict drafting, Size L — the identical-prompt-per-party constraint).
+**Progress (updated 2026-08-04):** Phase 0 and Phase 1's Must-priority items (0.1, 1.1–1.4) are done — the ingestion pipeline pulls iniciativas + votacoes from openAR, cross-checks citations against parlamento.pt, and fails loudly with an auto-filed GitHub issue on outage/schema-change/empty-payload. 1.5 (DRE ingestion, Should-priority) is deferred. Phase 2 (2.1, 2.2) is done — party program PDFs are chunked/indexed with Postgres full-text search, with a "not addressed" default for off-topic or low-confidence retrieval. Phase 3 (alignment engine, highest risk) is **done in full (3.1–3.5)**. The "not addressed" case is decided deterministically before any LLM call (reusing 2.2's `getProgramPosition`) — the LLM only ever picks among `aligned` / `partially_aligned` / `contradicts`, and the stored citation/quote is always the verbatim retrieved DB chunk, never LLM output. 3.4 added a signed-in-reviewer gate (`web/src/pages/review.astro`, Supabase Auth + RLS, no server); 3.5 added a public `/methodology` page generated at build time from the real pipeline functions, so "identical treatment per party" is auditable, not just asserted. Phase 4 (digest & frontend) is **done in full (4.1–4.5)**. 4.1 — the homepage renders one card per party per week, grouped by each initiative's own tabling week (not its review-approval date), sourced from a `public_digest` view built on `approved_verdicts`. This was the first migration granting anything to the `anon` role, scoped by RLS to `decision = 'approved'` rows only — pending/rejected drafts stay invisible to the public exactly as before. 4.2 — each digest item now expands in place (client-side, no dynamic routes) into the full citation (number/type/date/link), the vote result per AR sigla (backlog 3.1's dormant `classifyPartyVotePositions` logic finally gets used, ported into `web/src/lib/votes.ts` — a coalition like AD, whose two AR groups PSD/CDS-PP can vote differently, always shows both positions separately, never merged), and the program comparison (quoted passage, page number, link to the party's program, and the LLM's rationale that the reviewer already read and approved). 4.3 — party checkboxes (only for parties actually present in the data) and a from/to week range filter the already-fetched rows client-side, no DB changes and no refetch needed. 4.4 — `/methodology` (built narrowly in 3.5) now also covers the human review gate, deterministic classification, citation resolution, and data sources — the full policy story, not just the LLM-audit angle. 4.5 — real automated WCAG 2.1 AA checks via `@axe-core/playwright` in CI (`web/test/a11y.spec.ts`, `web/playwright.config.ts`), covering `/`, `/methodology`, and `/review`, including the digest's dynamically-rendered card and its expanded drill-down detail (mocked with a split-vote coalition scenario so the real rendered content gets scanned, not just the empty shell). One real gap found and fixed: the digest item's "Ver detalhe" toggle now sets `aria-expanded`. No new LLM step anywhere in Phase 4 — every card is a deterministic grouping/join/filter of already-reviewed content. **Parallel Track A (civic literacy) is done in full (A.1, A.2)**: 26 glossary terms and 15 explainer articles (`web/src/content/glossary.ts`/`explainers.ts`), all genuine written content, not placeholders. Glossary terms link inline wherever they appear as controlled-vocabulary values — `tipoDesc` and a vote's `descricao` — via exact (case-insensitive) matching, deliberately not a free-text scanner, so a quoted program passage or an LLM rationale never gets links injected into it. New static pages `/glossario` and `/explicadores` (+ one per explainer via `getStaticPaths`), all extended into the 4.5 accessibility suite (6/6 passing). **Parallel Track B (compliance & trust) is done in full (B.1, B.2)** — the last remaining Must-priority MVP work. B.1 — a GDPR privacy notice (`/privacidade`, with a placeholder data-controller contact the operator must fill in before launch) and Cloudflare Web Analytics wired inert-by-default through a new `PUBLIC_CF_ANALYTICS_TOKEN` env var (`web/src/components/Analytics.astro`, included on every page) — chosen over self-hosting Plausible/Umami since it needs no server of its own and is cookie-free/consent-free by construction. B.2 — a public correction/right-of-reply form (`/correcoes`) tied to a specific verdict via a "Reportar um problema" link on each digest item, backed by a new `correction_requests` table. This is the first table in the schema holding real PII (an optional submitter email for follow-up) — protected with **column-level** grants, not whole-table ones, so `submitter_email` is structurally unreachable by `anon` even via a direct query, not merely omitted by the public view (`public_correction_requests`). Resolving a request is a manual service-role edit via Supabase's Table Editor, documented in `GETTING_STARTED.md`, matching the existing pattern for correcting a mis-submitted review. Both extended into the accessibility suite (8/8 passing). **This closes every Must-priority item in the MVP backlog** (Phases 0–4 plus Tracks A and B). Remaining: 1.5 (DRE ingestion, deferred Should-priority) and the "Later (v1.1+)" items, none of which block launch.
 
 ---
 
@@ -91,21 +91,21 @@ LLM assigns each initiative to one topic from a fixed list of ~20–30 (habitaç
 
 **Acceptance criteria:** every output topic tag is a member of the fixed list; a test confirms an out-of-list output is rejected/retried.
 
-### [ ] 3.3 Verdict drafting
+### [x] 3.3 Verdict drafting
 **Priority:** Must · **Size:** L · **Depends on:** 2.1, 2.2, 3.1, 3.2
 
 Given an initiative and its retrieved program passage, draft a verdict (aligned / partially aligned / contradicts / not addressed) using **one identical prompt template for every party** — the only variables are party name, initiative text, and retrieved passage. Log the exact prompt used, verbatim, for every call.
 
 **Acceptance criteria:** the same prompt template file is used regardless of party (a test should fail if any party-specific branching is introduced); every draft verdict stores its source citation and quoted program passage alongside the label.
 
-### [ ] 3.4 Human review gate
+### [x] 3.4 Human review gate
 **Priority:** Must · **Size:** M · **Depends on:** 3.3
 
 Build the reviewer interface showing the initiative, the citation, the program passage, and the draft verdict side-by-side, with approve/edit/reject actions. **Build this before wiring anything to a publish action.**
 
 **Acceptance criteria:** there is no code path from a drafted verdict to a public-facing page that doesn't pass through an explicit human approval, logged with reviewer identity and timestamp.
 
-### [ ] 3.5 Methodology audit view
+### [x] 3.5 Methodology audit view
 **Priority:** Must · **Size:** S · **Depends on:** 3.3
 
 A page (internal or public) showing the exact prompt template and retrieval logic in use, so an auditor can confirm no party received different treatment.
@@ -114,25 +114,25 @@ A page (internal or public) showing the exact prompt template and retrieval logi
 
 ## Phase 4 — Digest & frontend
 
-### [ ] 4.1 Weekly digest generation
+### [x] 4.1 Weekly digest generation
 **Priority:** Must · **Size:** M · **Depends on:** 3.4
 
 Generate one card per party per week from approved verdicts, in plain PT-PT.
 
-### [ ] 4.2 Digest → source drill-down
+### [x] 4.2 Digest → source drill-down
 **Priority:** Must · **Size:** S · **Depends on:** 4.1
 
 Clicking a card shows the full citation, vote result, and program comparison.
 
-### [ ] 4.3 Search/filter by party and date
+### [x] 4.3 Search/filter by party and date
 **Priority:** Must · **Size:** M · **Depends on:** 4.1
 
-### [ ] 4.4 Public methodology page
+### [x] 4.4 Public methodology page
 **Priority:** Must · **Size:** S · **Depends on:** 3.5
 
 Publish the full methodology (not a summary) — taxonomy, prompt template, confidence threshold — on a permanent, linkable page.
 
-### [ ] 4.5 Accessibility pass
+### [x] 4.5 Accessibility pass
 **Priority:** Must · **Size:** M · **Depends on:** 4.1, 4.2, 4.3
 
 WCAG 2.1 AA on the digest, explainer, and methodology pages. Add automated axe-core checks to CI.
@@ -141,12 +141,12 @@ WCAG 2.1 AA on the digest, explainer, and methodology pages. Add automated axe-c
 
 ## Parallel track A — Civic literacy (no dependency on Phases 1–4, start anytime)
 
-### [ ] A.1 Inline glossary
+### [x] A.1 Inline glossary
 **Priority:** Must · **Size:** S
 
 Clickable glossary terms inline wherever they appear (e.g. "baixa à comissão"), ~25 terms at launch (full list in `docs/strategy.md` §6).
 
-### [ ] A.2 Explainer articles
+### [x] A.2 Explainer articles
 **Priority:** Must · **Size:** M
 
 ~15 launch explainers (how a bill becomes law, AR vs Governo vs Presidência, etc. — full list in `docs/strategy.md` §6).
@@ -155,12 +155,12 @@ Clickable glossary terms inline wherever they appear (e.g. "baixa à comissão")
 
 ## Parallel track B — Compliance & trust (no dependency on Phases 1–4, start anytime)
 
-### [ ] B.1 Privacy notice + analytics
+### [x] B.1 Privacy notice + analytics
 **Priority:** Must · **Size:** S
 
 GDPR-compliant privacy notice; consent-free or consent-gated analytics (e.g. self-hosted Plausible/Umami), no PII tied to reading behavior.
 
-### [ ] B.2 Correction / right-of-reply mechanism
+### [x] B.2 Correction / right-of-reply mechanism
 **Priority:** Must · **Size:** M · **Depends on:** 4.2 (needs a published item to attach the request to)
 
 A form letting anyone submit a correction request tied to a specific published item, with a publicly visible log of requests and resolutions.
