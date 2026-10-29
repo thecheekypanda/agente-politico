@@ -1,5 +1,6 @@
 ---
 import Analytics from '../components/Analytics.astro';
+import '../styles/global.css';
 
 const title = 'O Que Fizeram';
 ---
@@ -14,18 +15,17 @@ const title = 'O Que Fizeram';
   <body>
     <main>
       <h1>{title}</h1>
-      <p>
+      <p class="lede">
         Resumos semanais da atividade parlamentar portuguesa, comparada com o programa eleitoral
         de cada partido. Cada etiqueta abaixo já foi revista e aprovada por um humano — nada aqui
         é publicado diretamente por um modelo de IA. Ver a <a href="/methodology">metodologia</a>,
         o <a href="/glossario">glossário</a>, os <a href="/explicadores">explicadores</a>,
-        a <a href="/privacidade">política de privacidade</a> ou como
-        <a href="/correcoes">pedir uma correção</a>.
+        a <a href="/privacidade">política de privacidade</a> ou como <a href="/correcoes">pedir uma correção</a>.
       </p>
-      <form id="filters" hidden>
+      <form id="filters" class="filters" hidden>
         <fieldset>
           <legend>Partidos</legend>
-          <div id="party-checkboxes"></div>
+          <div id="party-checkboxes" class="checkbox-grid"></div>
         </fieldset>
         <fieldset>
           <legend>Semana</legend>
@@ -34,7 +34,7 @@ const title = 'O Que Fizeram';
           <label for="to-week">Até</label>
           <input type="date" id="to-week" name="to-week" />
         </fieldset>
-        <button id="clear-filters" type="button">Limpar filtros</button>
+        <button id="clear-filters" type="button" class="button-secondary">Limpar filtros</button>
       </form>
       <p id="digest-status" role="status">A carregar...</p>
       <div id="digest"></div>
@@ -44,13 +44,16 @@ const title = 'O Que Fizeram';
       import { supabase } from '../lib/supabase-client';
       import {
         filterDigestRows,
-        groupDigestItems,
+        groupDigestRowsByInitiative,
+        groupInitiativeCardsByWeek,
         rowToDigestItem,
-        type DigestCard,
         type DigestItem,
         type DigestRow,
+        type InitiativeDigestCard,
+        type WeekSection,
       } from '../lib/digest';
       import { rowToVotacao, type VotacaoRow } from '../lib/votes';
+      import { flattenPartyRosterSiglas, rowToPartyProgram, type PartyProgramRow } from '../lib/party-roster';
       import { formatDate } from '../lib/format';
       import { appendMaybeGlossaryLink, renderVoteResult } from '../lib/vote-render';
 
@@ -70,9 +73,11 @@ const title = 'O Que Fizeram';
       const clearFiltersButton = document.getElementById('clear-filters') as HTMLButtonElement;
 
       // Populated once after the initial fetch; filtering/re-rendering
-      // below never refetches — backlog 4.3 is purely a client-side view
-      // over the data public_digest already returned once.
+      // below never refetches — purely a client-side view over data
+      // already fetched once.
       let allRows: DigestRow[] = [];
+      let allSiglas: string[] = [];
+      const votacoesCache = new Map<number, VotacaoRow[]>();
 
       function formatWeek(weekStart: string): string {
         const start = new Date(`${weekStart}T00:00:00Z`);
@@ -82,60 +87,45 @@ const title = 'O Que Fizeram';
         return `${fmt(start)} – ${fmt(end)}`;
       }
 
-      // Fetched lazily, once per item, on first expand — the vote-result
-      // block is the only part of the detail panel that needs a second
-      // network round trip.
-      const votacoesCache = new Map<number, VotacaoRow[]>();
+      async function fetchVotacoesFor(iniciativaIds: number[]): Promise<void> {
+        const missing = iniciativaIds.filter((id) => !votacoesCache.has(id));
+        if (missing.length === 0) return;
 
-      async function fetchVotacoes(iniciativaId: number): Promise<VotacaoRow[]> {
-        const cached = votacoesCache.get(iniciativaId);
-        if (cached) return cached;
-
-        const { data, error } = await supabase.from('votacoes').select('*').eq('iniciativa_id', iniciativaId);
+        const { data, error } = await supabase.from('votacoes').select('*').in('iniciativa_id', missing);
         if (error) {
           throw new Error(error.message);
         }
-        const rows = (data ?? []).map(rowToVotacao);
-        votacoesCache.set(iniciativaId, rows);
-        return rows;
+        const byIniciativa = new Map<number, VotacaoRow[]>();
+        for (const row of data ?? []) {
+          const votacao = rowToVotacao(row);
+          const iniciativaId = row.iniciativa_id as number;
+          const list = byIniciativa.get(iniciativaId) ?? [];
+          list.push(votacao);
+          byIniciativa.set(iniciativaId, list);
+        }
+        for (const id of missing) {
+          votacoesCache.set(id, byIniciativa.get(id) ?? []);
+        }
       }
 
-      function renderDetail(item: DigestItem): HTMLElement {
-        const detail = document.createElement('div');
-
-        const citation = document.createElement('p');
-        appendMaybeGlossaryLink(citation, item.tipoDesc);
-        citation.appendChild(
-          document.createTextNode(
-            ` n.º ${item.numero}` + (item.dataEntrada ? ` · ${formatDate(item.dataEntrada)}` : ''),
-          ),
-        );
-        detail.appendChild(citation);
-
-        if (item.canonicalUrl) {
-          const link = document.createElement('a');
-          link.href = item.canonicalUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.textContent = 'Ver iniciativa em parlamento.pt';
-          detail.appendChild(link);
+      async function loadPartyRoster(): Promise<void> {
+        const { data, error } = await supabase
+          .from('party_programs')
+          .select('label, party_name, ar_siglas')
+          .order('id', { ascending: true });
+        if (error) {
+          throw new Error(error.message);
         }
+        const roster: PartyProgramRow[] = (data ?? []).map(rowToPartyProgram);
+        allSiglas = flattenPartyRosterSiglas(roster);
+      }
 
-        const voteHeading = document.createElement('h4');
-        voteHeading.textContent = 'Resultado da votação';
-        detail.appendChild(voteHeading);
-
-        const voteContainer = document.createElement('div');
-        voteContainer.textContent = 'A carregar...';
-        detail.appendChild(voteContainer);
-        fetchVotacoes(item.iniciativaId)
-          .then((votos) => voteContainer.replaceWith(renderVoteResult(votos, item.arSiglas)))
-          .catch((err) => {
-            voteContainer.textContent = `Erro ao carregar a votação: ${err instanceof Error ? err.message : String(err)}`;
-          });
+      function renderVerdictDetail(item: DigestItem): HTMLElement {
+        const detail = document.createElement('div');
+        detail.className = 'verdict-detail';
 
         if (item.quotedPassage) {
-          const passageHeading = document.createElement('h4');
+          const passageHeading = document.createElement('h5');
           passageHeading.textContent = `Passagem do programa (página ${item.citationPageNumber})`;
           detail.appendChild(passageHeading);
 
@@ -147,12 +137,12 @@ const title = 'O Que Fizeram';
           programLink.href = item.programSourceUrl;
           programLink.target = '_blank';
           programLink.rel = 'noopener noreferrer';
-          programLink.textContent = 'Ver programa eleitoral';
+          programLink.textContent = `Ver programa de ${item.partyName}`;
           detail.appendChild(programLink);
         }
 
         if (item.rationale) {
-          const rationaleHeading = document.createElement('h4');
+          const rationaleHeading = document.createElement('h5');
           rationaleHeading.textContent = 'Porque este veredicto';
           detail.appendChild(rationaleHeading);
 
@@ -169,32 +159,21 @@ const title = 'O Que Fizeram';
         return detail;
       }
 
-      function renderItem(item: DigestItem): HTMLElement {
+      function renderAlignmentItem(item: DigestItem): HTMLElement {
         const li = document.createElement('li');
+        li.className = 'alignment-item';
 
         const summary = document.createElement('p');
-        const labelChip = document.createElement('strong');
+        const labelChip = document.createElement('span');
+        labelChip.className = `label-chip label-chip--${item.label}`;
         labelChip.textContent = LABEL_NAMES[item.label] ?? item.label;
         summary.appendChild(labelChip);
-        summary.appendChild(document.createTextNode(' — '));
-
-        if (item.canonicalUrl) {
-          const link = document.createElement('a');
-          link.href = item.canonicalUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.textContent = item.titulo;
-          summary.appendChild(link);
-        } else {
-          summary.appendChild(document.createTextNode(item.titulo));
-        }
-        summary.appendChild(document.createTextNode(' ('));
-        appendMaybeGlossaryLink(summary, item.tipoDesc);
-        summary.appendChild(document.createTextNode(` · ${item.topic})`));
+        summary.appendChild(document.createTextNode(` ${item.partyName} · ${item.topic}`));
         li.appendChild(summary);
 
         const toggle = document.createElement('button');
         toggle.type = 'button';
+        toggle.className = 'button-link';
         toggle.textContent = 'Ver detalhe';
         toggle.setAttribute('aria-expanded', 'false');
         li.appendChild(toggle);
@@ -209,7 +188,7 @@ const title = 'O Que Fizeram';
             toggle.setAttribute('aria-expanded', String(!detailEl.hidden));
             return;
           }
-          detailEl = renderDetail(item);
+          detailEl = renderVerdictDetail(item);
           li.appendChild(detailEl);
           toggle.textContent = 'Esconder detalhe';
           toggle.setAttribute('aria-expanded', 'true');
@@ -218,20 +197,62 @@ const title = 'O Que Fizeram';
         return li;
       }
 
-      function renderCard(card: DigestCard): HTMLElement {
+      function renderInitiativeCard(card: InitiativeDigestCard): HTMLElement {
         const article = document.createElement('article');
+        article.className = 'initiative-card';
 
-        const heading = document.createElement('h2');
-        heading.textContent = `${card.partyName} — semana de ${formatWeek(card.weekStart)}`;
+        const heading = document.createElement('h3');
+        appendMaybeGlossaryLink(heading, card.tipoDesc);
+        if (card.canonicalUrl) {
+          heading.appendChild(document.createTextNode(': '));
+          const link = document.createElement('a');
+          link.href = card.canonicalUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = card.titulo;
+          heading.appendChild(link);
+        } else {
+          heading.appendChild(document.createTextNode(`: ${card.titulo}`));
+        }
         article.appendChild(heading);
 
-        const list = document.createElement('ul');
-        for (const item of card.items) {
-          list.appendChild(renderItem(item));
+        const meta = document.createElement('p');
+        meta.className = 'initiative-meta';
+        meta.textContent = `n.º ${card.numero}` + (card.dataEntrada ? ` · ${formatDate(card.dataEntrada)}` : '');
+        article.appendChild(meta);
+
+        const voteHeading = document.createElement('h4');
+        voteHeading.textContent = 'Como votou cada partido';
+        article.appendChild(voteHeading);
+        article.appendChild(renderVoteResult(votacoesCache.get(card.iniciativaId) ?? [], allSiglas));
+
+        const alignmentHeading = document.createElement('h4');
+        alignmentHeading.textContent = 'Alinhamento com os partidos';
+        article.appendChild(alignmentHeading);
+
+        const alignmentList = document.createElement('ul');
+        alignmentList.className = 'alignment-list';
+        for (const verdict of card.verdicts) {
+          alignmentList.appendChild(renderAlignmentItem(verdict));
         }
-        article.appendChild(list);
+        article.appendChild(alignmentList);
 
         return article;
+      }
+
+      function renderWeekSection(section: WeekSection): HTMLElement {
+        const container = document.createElement('section');
+        container.className = 'week-section';
+
+        const heading = document.createElement('h2');
+        heading.textContent = `Semana de ${formatWeek(section.weekStart)}`;
+        container.appendChild(heading);
+
+        for (const card of section.initiatives) {
+          container.appendChild(renderInitiativeCard(card));
+        }
+
+        return container;
       }
 
       function buildPartyCheckboxes(rows: DigestRow[]) {
@@ -268,10 +289,10 @@ const title = 'O Que Fizeram';
           fromWeek: fromWeekInput.value || undefined,
           toWeek: toWeekInput.value || undefined,
         });
-        const cards = groupDigestItems(filtered);
+        const sections = groupInitiativeCardsByWeek(groupDigestRowsByInitiative(filtered));
 
         digestEl.replaceChildren();
-        if (cards.length === 0) {
+        if (sections.length === 0) {
           statusEl.textContent =
             allRows.length === 0
               ? 'Ainda não há veredictos aprovados publicados.'
@@ -279,8 +300,8 @@ const title = 'O Que Fizeram';
           return;
         }
         statusEl.textContent = '';
-        for (const card of cards) {
-          digestEl.appendChild(renderCard(card));
+        for (const section of sections) {
+          digestEl.appendChild(renderWeekSection(section));
         }
       }
 
@@ -296,23 +317,30 @@ const title = 'O Que Fizeram';
       toWeekInput.addEventListener('change', render);
 
       async function loadDigest() {
-        const { data, error } = await supabase
-          .from('public_digest')
-          .select('*')
-          .order('week_start', { ascending: false })
-          .limit(200);
+        try {
+          await loadPartyRoster();
 
-        if (error) {
-          statusEl.textContent = `Erro ao carregar o resumo: ${error.message}`;
-          return;
-        }
+          const { data, error } = await supabase
+            .from('public_digest')
+            .select('*')
+            .order('week_start', { ascending: false })
+            .limit(200);
 
-        allRows = (data ?? []).map(rowToDigestItem);
-        if (allRows.length > 0) {
-          filtersEl.hidden = false;
-          buildPartyCheckboxes(allRows);
+          if (error) {
+            statusEl.textContent = `Erro ao carregar o resumo: ${error.message}`;
+            return;
+          }
+
+          allRows = (data ?? []).map(rowToDigestItem);
+          if (allRows.length > 0) {
+            filtersEl.hidden = false;
+            buildPartyCheckboxes(allRows);
+            await fetchVotacoesFor([...new Set(allRows.map((row) => row.iniciativaId))]);
+          }
+          render();
+        } catch (err) {
+          statusEl.textContent = `Erro ao carregar o resumo: ${err instanceof Error ? err.message : String(err)}`;
         }
-        render();
       }
 
       await loadDigest();

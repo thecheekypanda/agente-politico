@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterDigestRows, groupDigestItems, rowToDigestItem } from '../src/lib/digest';
+import { filterDigestRows, groupDigestRowsByInitiative, groupInitiativeCardsByWeek, rowToDigestItem } from '../src/lib/digest';
 
 function row(overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
   return {
@@ -58,51 +58,87 @@ describe('rowToDigestItem', () => {
   });
 });
 
-describe('groupDigestItems', () => {
-  it('groups items for the same week and party into one card', () => {
-    const rows = [row({ verdict_id: 1 }), row({ verdict_id: 2 })].map(rowToDigestItem);
+describe('groupDigestRowsByInitiative', () => {
+  it('groups verdicts for the same initiative into one card, even across different parties', () => {
+    const rows = [
+      row({ verdict_id: 1, iniciativa_id: 10, party_label: 'PS' }),
+      row({ verdict_id: 2, iniciativa_id: 10, party_label: 'CH' }),
+    ].map(rowToDigestItem);
 
-    const cards = groupDigestItems(rows);
+    const cards = groupDigestRowsByInitiative(rows);
 
     expect(cards).toHaveLength(1);
-    expect(cards[0].items).toHaveLength(2);
-    expect(cards[0].items.map((i) => i.verdictId)).toEqual([1, 2]);
+    expect(cards[0].verdicts).toHaveLength(2);
+    expect(cards[0].verdicts.map((v) => v.verdictId)).toEqual([1, 2]);
   });
 
-  it('splits items into separate cards by week and by party', () => {
+  it('splits into separate cards by initiative', () => {
     const rows = [
-      row({ verdict_id: 1, week_start: '2026-07-27', party_label: 'PS' }),
-      row({ verdict_id: 2, week_start: '2026-07-27', party_label: 'CH' }),
-      row({ verdict_id: 3, week_start: '2026-08-03', party_label: 'PS' }),
+      row({ verdict_id: 1, iniciativa_id: 10 }),
+      row({ verdict_id: 2, iniciativa_id: 20 }),
     ].map(rowToDigestItem);
 
-    const cards = groupDigestItems(rows);
-
-    expect(cards).toHaveLength(3);
+    expect(groupDigestRowsByInitiative(rows)).toHaveLength(2);
   });
 
-  it('orders cards most-recent-week-first', () => {
+  it('carries the initiative-level fields and each verdict\'s own party fields', () => {
     const rows = [
-      row({ verdict_id: 1, week_start: '2026-07-20' }),
-      row({ verdict_id: 2, week_start: '2026-08-03' }),
-      row({ verdict_id: 3, week_start: '2026-07-27' }),
+      row({ titulo: 'Habitação acessível', numero: '9/XVII', party_label: 'PS', party_name: 'Partido Socialista' }),
     ].map(rowToDigestItem);
 
-    const cards = groupDigestItems(rows);
+    const [card] = groupDigestRowsByInitiative(rows);
 
-    expect(cards.map((c) => c.weekStart)).toEqual(['2026-08-03', '2026-07-27', '2026-07-20']);
-  });
-
-  it('retains each item field correctly on the card', () => {
-    const rows = [row({ topic: 'Saúde', label: 'contradicts', canonical_url: null })].map(rowToDigestItem);
-
-    const cards = groupDigestItems(rows);
-
-    expect(cards[0].items[0]).toMatchObject({ topic: 'Saúde', label: 'contradicts', canonicalUrl: null });
+    expect(card.titulo).toBe('Habitação acessível');
+    expect(card.numero).toBe('9/XVII');
+    expect(card.verdicts[0].partyLabel).toBe('PS');
+    expect(card.verdicts[0].partyName).toBe('Partido Socialista');
   });
 
   it('returns no cards for no rows', () => {
-    expect(groupDigestItems([])).toEqual([]);
+    expect(groupDigestRowsByInitiative([])).toEqual([]);
+  });
+});
+
+describe('groupInitiativeCardsByWeek', () => {
+  function initiativeCard(overrides: Partial<Record<string, unknown>> = {}) {
+    return {
+      iniciativaId: 1,
+      titulo: 'Título',
+      tipoDesc: 'Projeto de Lei',
+      canonicalUrl: null,
+      numero: '1/XVII',
+      dataEntrada: '2026-07-27',
+      weekStart: '2026-07-27',
+      verdicts: [],
+      ...overrides,
+    };
+  }
+
+  it('orders sections most-recent-week-first', () => {
+    const cards = [
+      initiativeCard({ iniciativaId: 1, weekStart: '2026-07-20', dataEntrada: '2026-07-20' }),
+      initiativeCard({ iniciativaId: 2, weekStart: '2026-08-03', dataEntrada: '2026-08-03' }),
+      initiativeCard({ iniciativaId: 3, weekStart: '2026-07-27', dataEntrada: '2026-07-27' }),
+    ];
+
+    const sections = groupInitiativeCardsByWeek(cards);
+
+    expect(sections.map((s) => s.weekStart)).toEqual(['2026-08-03', '2026-07-27', '2026-07-20']);
+  });
+
+  it('orders initiatives within a week most-recently-filed-first', () => {
+    const cards = [
+      initiativeCard({ iniciativaId: 1, weekStart: '2026-07-27', dataEntrada: '2026-07-27' }),
+      initiativeCard({ iniciativaId: 2, weekStart: '2026-07-27', dataEntrada: '2026-07-30' }),
+    ];
+
+    const [section] = groupInitiativeCardsByWeek(cards);
+
+    expect(section.initiatives.map((i) => i.iniciativaId)).toEqual([2, 1]);
+  });
+
+  it('returns no sections for no cards', () => {
+    expect(groupInitiativeCardsByWeek([])).toEqual([]);
   });
 });
 

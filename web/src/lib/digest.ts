@@ -6,6 +6,8 @@ export interface DigestItem {
   titulo: string;
   tipoDesc: string;
   canonicalUrl: string | null;
+  partyLabel: string;
+  partyName: string;
   topic: string;
   label: VerdictLabel;
   reviewedAt: string;
@@ -21,17 +23,8 @@ export interface DigestItem {
   arSiglas: string[];
 }
 
-export interface DigestCard {
-  weekStart: string;
-  partyLabel: string;
-  partyName: string;
-  items: DigestItem[];
-}
-
 export type DigestRow = DigestItem & {
   weekStart: string;
-  partyLabel: string;
-  partyName: string;
 };
 
 export function rowToDigestItem(row: Record<string, unknown>): DigestRow {
@@ -85,38 +78,72 @@ export function filterDigestRows(rows: DigestRow[], filters: DigestFilters = {})
   });
 }
 
-// Groups flat public_digest rows into one card per (weekStart, partyLabel),
-// most-recent-week-first — "one card per party per week" (backlog 4.1). No
-// LLM step here: the card is a deterministic grouping of already-approved,
-// already-human-reviewed content, never freshly synthesized prose.
-export function groupDigestItems(rows: DigestRow[]): DigestCard[] {
-  const cards = new Map<string, DigestCard>();
+export interface InitiativeDigestCard {
+  iniciativaId: number;
+  titulo: string;
+  tipoDesc: string;
+  canonicalUrl: string | null;
+  numero: string;
+  dataEntrada: string | null;
+  weekStart: string;
+  // One entry per party whose verdict for this initiative has been
+  // approved so far — an initiative with only some parties reviewed shows
+  // only those; nothing here was ever published without its own human
+  // sign-off (CLAUDE.md's no-auto-publish rule).
+  verdicts: DigestItem[];
+}
+
+export interface WeekSection {
+  weekStart: string;
+  initiatives: InitiativeDigestCard[];
+}
+
+// Groups flat public_digest rows into one card per initiative, so an
+// initiative with several parties' verdicts approved appears once — not
+// once per party — with every party's alignment verdict for it together.
+// No LLM step here: purely a deterministic grouping of already-approved,
+// already-human-reviewed content.
+export function groupDigestRowsByInitiative(rows: DigestRow[]): InitiativeDigestCard[] {
+  const cards = new Map<number, InitiativeDigestCard>();
 
   for (const row of rows) {
-    const key = `${row.weekStart}:${row.partyLabel}`;
-    let card = cards.get(key);
+    let card = cards.get(row.iniciativaId);
     if (!card) {
-      card = { weekStart: row.weekStart, partyLabel: row.partyLabel, partyName: row.partyName, items: [] };
-      cards.set(key, card);
+      card = {
+        iniciativaId: row.iniciativaId,
+        titulo: row.titulo,
+        tipoDesc: row.tipoDesc,
+        canonicalUrl: row.canonicalUrl,
+        numero: row.numero,
+        dataEntrada: row.dataEntrada,
+        weekStart: row.weekStart,
+        verdicts: [],
+      };
+      cards.set(row.iniciativaId, card);
     }
-    card.items.push({
-      verdictId: row.verdictId,
-      iniciativaId: row.iniciativaId,
-      titulo: row.titulo,
-      tipoDesc: row.tipoDesc,
-      canonicalUrl: row.canonicalUrl,
-      topic: row.topic,
-      label: row.label,
-      reviewedAt: row.reviewedAt,
-      numero: row.numero,
-      dataEntrada: row.dataEntrada,
-      citationPageNumber: row.citationPageNumber,
-      quotedPassage: row.quotedPassage,
-      rationale: row.rationale,
-      programSourceUrl: row.programSourceUrl,
-      arSiglas: row.arSiglas,
-    });
+    card.verdicts.push(row);
   }
 
-  return [...cards.values()].sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+  return [...cards.values()];
+}
+
+// Groups initiative cards into weeks, most-recent-week-first and
+// most-recently-filed-initiative-first within a week.
+export function groupInitiativeCardsByWeek(cards: InitiativeDigestCard[]): WeekSection[] {
+  const sections = new Map<string, WeekSection>();
+
+  for (const card of cards) {
+    let section = sections.get(card.weekStart);
+    if (!section) {
+      section = { weekStart: card.weekStart, initiatives: [] };
+      sections.set(card.weekStart, section);
+    }
+    section.initiatives.push(card);
+  }
+
+  const result = [...sections.values()];
+  for (const section of result) {
+    section.initiatives.sort((a, b) => (b.dataEntrada ?? '').localeCompare(a.dataEntrada ?? ''));
+  }
+  return result.sort((a, b) => b.weekStart.localeCompare(a.weekStart));
 }
