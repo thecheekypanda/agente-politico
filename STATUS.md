@@ -35,8 +35,11 @@ deferred — see the backlog file for why.
 Project ref `zxewotduifkdvigaroco` (`https://zxewotduifkdvigaroco.supabase.co`,
 shown in the dashboard under the project **name** `tradutor-politico` — same
 project, just a different display name; don't let that name confuse a future
-session). All 11 migrations applied (the 11th, `20261029000000_...`, fixes
-the RLS bug below).
+session). All 12 migrations through `20261029010000_...` are applied (the
+11th fixes the RLS bug below). **`20261029020000_iniciativa_fases.sql`
+(new table for the procedural-timeline feature below) still needs to be
+run manually in the Supabase SQL Editor** — not auto-applied, same as every
+migration here.
 
 - **2,343 iniciativas**, **2,223 votações** ingested as of run #104
   (2026-10-19). The daily cron (`0 6 * * *` UTC) has kept running since;
@@ -63,6 +66,42 @@ fixed.
 
 GitHub Actions repo secrets `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
 `ANTHROPIC_API_KEY` are all correctly configured.
+
+## New feature (2026-10-29): per-initiative procedural timeline — backend done, UI not yet built
+
+User asked for a procedural timeline per initiative (Entrada, Admissão,
+Baixa comissão, Anúncio, Votação, ...), matching what parlamento.pt's own
+`DetalheIniciativa` page shows. openAR has no equivalent field (confirmed
+live) — parlamento.pt's own page, already this project's canonical
+citation source, is the only source. Shipped so far:
+
+- `pipeline/src/parlamento-client.ts`: `fetchIniciativaFases(id)` scrapes
+  the page's `rptFases` repeater into an ordered phase list, plus an
+  optional nested committee-parecer detail (date + reason, e.g. a
+  "por arrastamento" postponement) some phases carry. Throws on a
+  structural mismatch (0 phases from a 200 OK page) rather than silently
+  storing nothing, per `CLAUDE.md`'s DRE-scraper halt-on-mismatch
+  philosophy; returns `null` (skip, retry next run) on a transient
+  network/HTTP failure.
+- New table `iniciativa_fases` (migration above, **not yet applied live**).
+- `pipeline/src/fases-store.ts` + `ingest-fases.ts` (`npm run ingest:fases
+  --workspace=pipeline`): scoped to active iniciativas only (`data_fim is
+  null`) with a resolved `canonical_url`; re-scrapes every run until an
+  iniciativa concludes, then stops — both scoping decisions were
+  explicitly approved by the user. Wired into `.github/workflows/ingest.yml`
+  right after canonical-URL resolution.
+- Tests: `pipeline/test/parlamento-client.test.ts` (scraper, using real
+  confirmed markup shapes) and `pipeline/test/fases-store.test.ts`
+  (ingest idempotency, partial-failure tallying, halt-on-total-failure).
+
+**Still pending**: rendering this on `/review` and the public homepage —
+not built yet, needs its own follow-up once the migration is applied and
+the next ingestion run has populated real `iniciativa_fases` rows to
+design the UI against.
+
+(The temporary investigation artifacts from this work —
+`pipeline/src/debug-fetch-raw.ts` and `.github/workflows/debug.yml` — were
+deleted once the real markup was confirmed; no longer present.)
 
 ### Bugs found and fixed during live verification (chronological)
 
