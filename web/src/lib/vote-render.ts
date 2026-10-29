@@ -30,7 +30,22 @@ export function appendMaybeGlossaryLink(parent: HTMLElement, text: string) {
 export function renderVoteResult(votos: VotacaoRow[], arSiglas: string[]): HTMLElement {
   const container = document.createElement('div');
   if (votos.length === 0) {
-    container.textContent = 'Sem votação registada para esta iniciativa.';
+    // Still show every party explicitly as "não registado" — a blank
+    // sentence doesn't tell a reader which parties exist and simply
+    // haven't voted yet, vs. a party being missing from the data entirely.
+    const notice = document.createElement('p');
+    notice.className = 'vote-notice';
+    notice.textContent = 'Sem votação registada para esta iniciativa — estado atual de cada partido:';
+    container.appendChild(notice);
+
+    const placeholderList = document.createElement('ul');
+    placeholderList.className = 'party-vote-placeholder';
+    for (const sigla of arSiglas) {
+      const li = document.createElement('li');
+      li.textContent = `${sigla}: ${VOTE_POSITION_NAMES.nao_registado}`;
+      placeholderList.appendChild(li);
+    }
+    container.appendChild(placeholderList);
     return container;
   }
 
