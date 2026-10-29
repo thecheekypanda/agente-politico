@@ -1,0 +1,9 @@
+name = "agente-politico"
+compatibility_date = "2026-10-20"
+
+# Astro's static build output. No Worker script (`main`) is needed here —
+# this is a pure static site; see web/astro.config.mjs's `output: 'static'`.
+# `npm run build --workspace=web` (the Cloudflare build command) produces
+# this directory before `wrangler deploy` runs.
+[assets]
+directory = "./web/dist"
