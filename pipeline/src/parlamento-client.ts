@@ -89,6 +89,15 @@ function collectByCtlIndex(html: string, re: RegExp): Map<string, string> {
   return result;
 }
 
+// A phase's lblData span can be present but empty — observed live on
+// iniciativa 377242 (2026-10-29), likely a scheduled-but-not-yet-dated
+// future phase. `.trim()` above turns that into `''`, which is not a valid
+// Postgres `date` and must not reach the DB as one; treat it the same as
+// "absent" (null) rather than storing it as a garbage empty date.
+function emptyToNull(value: string | undefined): string | null {
+  return value ? value : null;
+}
+
 // Parses the `rptFases` repeater on a DetalheIniciativa page into an
 // ordered procedural timeline (Entrada, Admissão, Anúncio, Votação, ...),
 // plus an optional committee-parecer detail nested inside some phases.
@@ -135,10 +144,10 @@ export async function fetchIniciativaFases(
 
   return ctlIndices.map((ctl) => ({
     ctlIndex: Number(ctl),
-    data: dates.get(ctl) ?? null,
+    data: emptyToNull(dates.get(ctl)),
     evento: eventos.get(ctl) as string,
-    obs: obsByCtl.get(ctl) ?? null,
-    parecerNaoEmitidoData: parecerDatas.get(ctl) ?? null,
-    parecerNaoEmitidoMotivo: parecerMotivos.get(ctl) ?? null,
+    obs: emptyToNull(obsByCtl.get(ctl)),
+    parecerNaoEmitidoData: emptyToNull(parecerDatas.get(ctl)),
+    parecerNaoEmitidoMotivo: emptyToNull(parecerMotivos.get(ctl)),
   }));
 }

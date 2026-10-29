@@ -152,6 +152,24 @@ describe('fetchIniciativaFases', () => {
     );
   });
 
+  it('normalizes an empty (but present) lblData span to null instead of an invalid empty-string date', async () => {
+    // Observed live on iniciativa 377242 (2026-10-29): a phase whose date
+    // span is present but empty — likely a scheduled-but-not-yet-dated
+    // future phase. An empty string reaching the DB's `date` column
+    // throws ("invalid input syntax for type date") rather than storing.
+    const html =
+      '<html><body>' +
+      `<span id="${prefix}_rptFases_ctl00_lblData" class="TextoRegular"></span>` +
+      `<span id="${prefix}_rptFases_ctl00_lblEvento" class="TextoRegular-Titulo">Agendamento</span>` +
+      '</body></html>';
+    const fetchImpl = async () =>
+      ({ ok: true, status: 200, text: async () => html }) as Response;
+
+    const fases = await fetchIniciativaFases(377242, { fetchImpl });
+
+    expect(fases?.[0].data).toBeNull();
+  });
+
   it('throws when the page loads fine but no phases parse — a structural mismatch, not silently empty', async () => {
     const fetchImpl = async () =>
       ({ ok: true, status: 200, text: async () => '<html><body>unrelated page</body></html>' }) as Response;
