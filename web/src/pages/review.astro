@@ -250,9 +250,15 @@ const title = 'Revisão de veredictos — O Que Fizeram';
         errorEl.setAttribute('role', 'alert');
         row.appendChild(errorEl);
 
+        // "Aprovar"/"Rejeitar" alone, right under a party name, read as
+        // approving the party (or its vote, given the vote block sits just
+        // above) rather than the AI-drafted alignment verdict about that
+        // party — spell out "veredicto" and name the party explicitly via
+        // aria-label, since several of these buttons repeat per card.
         const approveButton = document.createElement('button');
         approveButton.type = 'button';
-        approveButton.textContent = 'Aprovar';
+        approveButton.textContent = 'Aprovar veredicto';
+        approveButton.setAttribute('aria-label', `Aprovar veredicto de ${pending.partyName} sobre esta iniciativa`);
         approveButton.addEventListener('click', () =>
           submitReview(pending, 'approved', labelSelect.value as PendingVerdict['draftLabel'], notesInput.value, row, errorEl),
         );
@@ -260,7 +266,8 @@ const title = 'Revisão de veredictos — O Que Fizeram';
 
         const rejectButton = document.createElement('button');
         rejectButton.type = 'button';
-        rejectButton.textContent = 'Rejeitar';
+        rejectButton.textContent = 'Rejeitar veredicto';
+        rejectButton.setAttribute('aria-label', `Rejeitar veredicto de ${pending.partyName} sobre esta iniciativa`);
         rejectButton.addEventListener('click', () =>
           submitReview(pending, 'rejected', null, notesInput.value, row, errorEl),
         );
@@ -306,7 +313,7 @@ const title = 'Revisão de veredictos — O Que Fizeram';
 
         const bulkButton = document.createElement('button');
         bulkButton.type = 'button';
-        bulkButton.textContent = `Aprovar todos os partidos pendentes nesta iniciativa (${group.pendingByParty.length})`;
+        bulkButton.textContent = `Aprovar todos os vereditos pendentes nesta iniciativa (${group.pendingByParty.length})`;
         const bulkErrorEl = document.createElement('p');
         bulkErrorEl.className = 'bulk-error';
         bulkErrorEl.setAttribute('role', 'alert');
