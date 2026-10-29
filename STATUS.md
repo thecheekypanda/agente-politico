@@ -4,7 +4,23 @@ Living doc of where the project actually stands right now, separate from
 `docs/BACKLOG.md` (which tracks code completion) and `CLAUDE.md` (which
 tracks constraints that never change). Update this whenever real-world
 state changes — a deploy, a live run, an account-level step done or still
-pending. Last updated: 2026-10-20.
+pending. Last updated: 2026-10-29.
+
+## Live site: up and working
+
+**https://agente-politico.pedro-c-braganca.workers.dev** — Cloudflare
+Workers (static assets), auto-deploys from `main`. `/review` is signed-in
+and showing the real queue. Both the public digest (still empty — see
+below) and `/review` were broken until three real bugs, found live this
+session, were fixed (see "Bugs found and fixed" below).
+
+## Reviewer account: done
+
+A Supabase Auth user exists (invited via Authentication → Users), public
+sign-up is disabled, and signing in via magic link at `/review` works.
+**Known Supabase default to remember:** Site URL / Redirect URLs under
+Authentication → URL Configuration need to list the live site's actual
+URL, not `localhost:3000` (Supabase's default) — fixed this session.
 
 ## Code: all MVP backlog items complete
 
@@ -16,25 +32,43 @@ deferred — see the backlog file for why.
 
 ## Live Supabase project: real data, pipeline verified end-to-end
 
-Project ref `zxewotduifkdvigaroco` (`https://zxewotduifkdvigaroco.supabase.co`).
-All 10 migrations applied. As of the last Ingestion workflow run
-(run #104, 2026-10-19, commit `87e8577`):
+Project ref `zxewotduifkdvigaroco` (`https://zxewotduifkdvigaroco.supabase.co`,
+shown in the dashboard under the project **name** `tradutor-politico` — same
+project, just a different display name; don't let that name confuse a future
+session). All 11 migrations applied (the 11th, `20261029000000_...`, fixes
+the RLS bug below).
 
-- **2,343 iniciativas**, **2,223 votações** ingested
-- **0** canonical URLs needing resolution (already resolved from an earlier run)
-- **1,000/1,000** initiatives topic-tagged
-- **985 verdicts drafted**, **15 not_addressed** (deterministic, no LLM call), **0 undrafted** — out of 1,000 pending pairs
-- **0 verdicts approved** — nothing is publicly visible yet; this is the no-auto-publish constraint working as intended, not a bug
+- **2,343 iniciativas**, **2,223 votações** ingested as of run #104
+  (2026-10-19). The daily cron (`0 6 * * *` UTC) has kept running since;
+  exact current counts will be higher — check live rather than trusting
+  this file for current row counts.
+- **6,192 verdicts drafted** as of 2026-10-29 (grew from 985 on Oct 19 via
+  the daily cron, before hitting the Anthropic billing block below). Every
+  initiative gets one verdict **per party** (8 parties) — that's why the
+  count is large and why `/review` shows the same initiative title
+  repeated once per party; this is by design (`CLAUDE.md`'s identical
+  per-party treatment rule), not a bug.
+- **0 verdicts approved** — review is just starting (queue is now visible
+  and working, see bugs below).
+
+**New blocker (2026-10-28 onward): Anthropic billing.** The last several
+daily Ingestion runs fail at the topic-tagging step with *"Your credit
+balance is too low to access the Anthropic API."* Ingestion itself
+(iniciativas/votações) still succeeds — only the two LLM steps are
+affected. Needs credits topped up at
+[console.anthropic.com](https://console.anthropic.com) → Plans & Billing.
+Not urgent (6,192 already-drafted verdicts are plenty to review in the
+meantime) but will silently stop new data from being tagged/drafted until
+fixed.
 
 GitHub Actions repo secrets `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-`ANTHROPIC_API_KEY` are all correctly configured (confirmed by the
-successful run above). The daily cron (`0 6 * * *` UTC) will keep this
-data moving forward automatically.
+`ANTHROPIC_API_KEY` are all correctly configured.
 
-### Three real bugs found and fixed during this live verification
+### Bugs found and fixed during live verification (chronological)
 
 All committed with full detail in their commit messages — worth reading
-if debugging something similar:
+if debugging something similar. First batch (2026-10-19, getting the
+pipeline itself working):
 
 1. `e72f5f1` — `draft:verdicts` was built (backlog 3.3) but never wired
    into `.github/workflows/ingest.yml`, so the daily cron silently never
@@ -46,33 +80,54 @@ if debugging something similar:
    separator (`iniciativaId:partyLabel`), which violates Anthropic's
    required `^[a-zA-Z0-9_-]{1,64}$` pattern. Switched to `_`.
 
-A fourth non-code issue: the `ANTHROPIC_API_KEY` GitHub secret was
-initially saved as `ANTHROPIC_API` (typo) — not a bug, just a reminder to
-double-check exact secret names.
+Second batch (2026-10-29, getting the live site working):
+
+4. `0bee8cb` — Cloudflare's project was set up as **Workers** (not classic
+   Pages), which runs `wrangler deploy` after the build — but no
+   `wrangler.toml` existed, so Wrangler couldn't tell this was a static
+   site or where the build output lived. Added a root-level
+   `wrangler.toml` with an `[assets]` block pointing at `web/dist`.
+5. (Cloudflare dashboard config, not a code fix) — `PUBLIC_SUPABASE_URL` /
+   `PUBLIC_SUPABASE_ANON_KEY` were never added as **build-time** variables
+   in the Cloudflare project settings (distinct from Worker runtime
+   variables/bindings — Astro bakes these into the JS bundle via
+   `import.meta.env` at build time). Without them, `supabase-client.ts`
+   throws the instant its module loads in the browser, which silently
+   broke *both* the homepage (stuck on "A carregar...") and `/review`'s
+   sign-in form (submit button did nothing, zero requests reached
+   Supabase) — one root cause, two symptoms.
+6. `1a67d80` — `iniciativas` and `party_programs` had Row-Level Security
+   **enabled** live, with zero policies ever defined for either table —
+   not via any migration in this repo, almost certainly a one-click
+   "Enable RLS" toggle in the Supabase Table Editor UI at some point. Both
+   tables were always designed to rely on GRANTs alone (same category as
+   `votacoes` — see the comment in `20260803000000_digest_drill_down.sql`).
+   RLS-enabled-with-no-policy means default-deny for every role but the
+   owner, which silently zeroed out `pending_verdicts`' joins: `/review`
+   showed "no pending verdicts" despite 6,192 real ones. Fixed by a new
+   migration disabling RLS on both tables (also run directly against the
+   live DB via SQL Editor, since migrations here aren't auto-applied).
+
+A non-code issue, also from the first batch: the `ANTHROPIC_API_KEY`
+GitHub secret was initially saved as `ANTHROPIC_API` (typo).
+
+Also found and explicitly **declined** to build: a "mass-approve the
+backlog, flagged as unreviewed by default" feature. Refused per
+`CLAUDE.md`'s no-auto-publish constraint — see that file before
+reconsidering this.
 
 ## Pending account-level steps (only a human can do these)
 
-These are documented in detail in `GETTING_STARTED.md` — this is just the
-live checklist of what's actually done vs. not, for this specific project:
-
-- [ ] **Reviewer account** (`GETTING_STARTED.md` Step 13) — no Supabase
-  Auth user has been created yet, so nobody can sign into `/review` to
-  approve any of the 985 drafted verdicts. This blocks the public digest
-  from showing anything at all.
-- [ ] **Cloudflare Pages/Workers deploy** (`GETTING_STARTED.md` Step 10) —
-  the GitHub integration is connected and auto-deploys on push to `main`,
-  but the first deployment (commit `87e8577`, 2026-10-19 ~22:10 UTC)
-  **failed**. Likely cause, not yet confirmed from the actual build log:
-  - Root directory may be set to `web/` instead of the repo root `/` — this
-    is an npm-workspaces monorepo, and `web`'s `prebuild` script runs
-    `export:methodology --workspace=pipeline`, which needs the `pipeline`
-    workspace's dependencies installed too.
-  - `PUBLIC_SUPABASE_URL` / `PUBLIC_SUPABASE_ANON_KEY` build environment
-    variables are probably missing — `web/src/lib/supabase-client.ts`
-    throws at build time without them.
-  - Correct settings per `GETTING_STARTED.md` Step 10: root directory `/`,
-    build command `npm install && npm run build --workspace=web`, output
-    directory `web/dist`.
+- [x] **Reviewer account** (`GETTING_STARTED.md` Step 13) — done. Magic-link
+  sign-in works at `/review`. Reminder: Authentication → URL Configuration
+  → Site URL / Redirect URLs must list the live site's real URL, not
+  Supabase's `localhost:3000` default, or magic links redirect nowhere.
+- [x] **Cloudflare Workers deploy** (`GETTING_STARTED.md` Step 10) — done,
+  after bugs 4–5 above. Live at
+  `https://agente-politico.pedro-c-braganca.workers.dev`. Project is named
+  `agente-politico` in Cloudflare, under account `Pedro.c.braganca@...`.
+- [ ] **Top up Anthropic credits** — see "New blocker" above. Needed before
+  the daily cron resumes drafting new verdicts.
 - [ ] **Privacy notice contact** (`GETTING_STARTED.md` Step 15) —
   `web/src/pages/privacidade.astro` still has the placeholder
   `[a preencher pelo operador antes do lançamento — ver GETTING_STARTED.md]`.
@@ -84,11 +139,10 @@ live checklist of what's actually done vs. not, for this specific project:
 
 ## Suggested next steps, in order
 
-1. Create the reviewer Supabase Auth account (Step 13).
-2. Fix the Cloudflare build settings + env vars above, retry the deploy.
-3. Sign into the live `/review` page and approve a batch of the 985
-   drafted verdicts, so the public digest has real content to show.
-4. Fill in the privacy notice contact before sharing the live URL beyond
+1. Review and approve a batch of the 6,192 drafted verdicts at `/review`
+   (now working) — the public digest stays empty until some are approved.
+2. Top up Anthropic credits so the daily cron resumes drafting new ones.
+3. Fill in the privacy notice contact before sharing the live URL beyond
    trusted stakeholders.
 
 ## Credentials — never committed, always re-supplied per session
