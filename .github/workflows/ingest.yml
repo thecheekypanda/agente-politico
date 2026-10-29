@@ -54,6 +54,17 @@ jobs:
         if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' }}
         run: npm run resolve:canonical-urls --workspace=pipeline
 
+      - name: Scrape procedural timelines (parlamento.pt)
+        # Procedural-phase history (committee stages, parecer status,
+        # plenary votes) isn't available from openAR — parlamento.pt's own
+        # DetalheIniciativa page is the only source, and it's already this
+        # project's canonical citation target (CLAUDE.md). Runs after
+        # canonical-url resolution since scraping needs the real BID.
+        # Scoped to active iniciativas only (data_fim is null) and
+        # re-scraped every run until one concludes.
+        if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        run: npm run ingest:fases --workspace=pipeline
+
       - name: Tag topics (Claude Haiku 4.5 batch)
         # Reads iniciativas the earlier steps already wrote — runs after
         # them so there's something to tag. Closed-list topic-tagging per
