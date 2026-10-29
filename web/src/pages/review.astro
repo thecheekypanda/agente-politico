@@ -36,20 +36,53 @@ const title = 'Revisão de veredictos — O Que Fizeram';
           Sessão iniciada como <strong id="reviewer-email"></strong> ·
           <button id="sign-out" type="button">Sair</button>
         </p>
-        <p id="queue-status" role="status"></p>
+
+        <h2>Fila de revisão</h2>
+        <form id="sort-controls">
+          <fieldset>
+            <legend>Ordenar por data</legend>
+            <label><input type="radio" name="sort-direction" value="desc" checked /> Mais recentes primeiro</label>
+            <label><input type="radio" name="sort-direction" value="asc" /> Mais antigos primeiro</label>
+          </fieldset>
+          <label>
+            <input type="checkbox" id="pin-current-year" checked />
+            Mostrar primeiro as iniciativas de <span id="current-year-label"></span>
+          </label>
+        </form>
+
+        <p id="queue-status" role="status" aria-live="polite" tabindex="-1"></p>
         <div id="queue"></div>
+        <button id="load-more" type="button" hidden>Carregar mais</button>
       </section>
     </main>
 
     <script>
       import { supabase } from '../lib/supabase-client';
-      import { buildReviewInsert, rowToPendingVerdict, VERDICT_LABELS, type PendingVerdict } from '../lib/review';
+      import {
+        buildBulkApproveInserts,
+        buildReviewInsert,
+        groupPendingVerdictsByInitiative,
+        rowToPendingVerdict,
+        sortInitiativeGroups,
+        VERDICT_LABELS,
+        type InitiativeGroup,
+        type PendingVerdict,
+        type SortDirection,
+      } from '../lib/review';
+      import { flattenPartyRosterSiglas, rowToPartyProgram, type PartyProgramRow } from '../lib/party-roster';
+      import { rowToVotacao, type VotacaoRow } from '../lib/votes';
+      import { renderVoteResult } from '../lib/vote-render';
+      import { formatDate } from '../lib/format';
 
       const signedOutSection = document.getElementById('signed-out') as HTMLElement;
       const signedInSection = document.getElementById('signed-in') as HTMLElement;
       const reviewerEmailEl = document.getElementById('reviewer-email') as HTMLElement;
       const queueEl = document.getElementById('queue') as HTMLElement;
       const queueStatusEl = document.getElementById('queue-status') as HTMLElement;
+      const loadMoreButton = document.getElementById('load-more') as HTMLButtonElement;
+      const sortControlsForm = document.getElementById('sort-controls') as HTMLFormElement;
+      const pinCurrentYearCheckbox = document.getElementById('pin-current-year') as HTMLInputElement;
+      const currentYearLabelEl = document.getElementById('current-year-label') as HTMLElement;
       const signInForm = document.getElementById('sign-in-form') as HTMLFormElement;
       const signInStatusEl = document.getElementById('sign-in-status') as HTMLElement;
       const signOutButton = document.getElementById('sign-out') as HTMLButtonElement;
@@ -60,6 +93,9 @@ const title = 'Revisão de veredictos — O Que Fizeram';
         contradicts: 'Contradiz',
         not_addressed: 'Não abordado no programa',
       };
+
+      const CURRENT_YEAR = new Date().getFullYear();
+      currentYearLabelEl.textContent = String(CURRENT_YEAR);
 
       signInForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -84,63 +120,112 @@ const title = 'Revisão de veredictos — O Que Fizeram';
         signedInSection.hidden = true;
       }
 
-      function renderCard(pending: PendingVerdict): HTMLElement {
-        const card = document.createElement('article');
-        card.dataset.verdictId = String(pending.verdictId);
+      // Single source of truth for everything fetched so far across every
+      // "Load more" page — mutations (approve/reject, bulk approve) splice
+      // this array and trigger a full re-group + re-render, never a direct
+      // DOM removal. A .range() page boundary can split one initiative's
+      // party rows across two pages, so only a full re-group over the
+      // complete accumulated array guarantees an initiative never renders
+      // as two separate cards.
+      let allPending: PendingVerdict[] = [];
+      let partyRoster: PartyProgramRow[] = [];
+      let allSiglas: string[] = [];
+      const votacoesCache = new Map<number, VotacaoRow[]>();
 
-        const heading = document.createElement('h3');
-        heading.textContent = pending.titulo;
-        card.appendChild(heading);
+      const PAGE_SIZE = 500;
+      let offset = 0;
+      let lastPageWasFull = false;
+
+      function announce(message: string) {
+        queueStatusEl.textContent = message;
+        queueStatusEl.focus();
+      }
+
+      async function fetchVotacoesFor(iniciativaIds: number[]): Promise<void> {
+        const missing = iniciativaIds.filter((id) => !votacoesCache.has(id));
+        if (missing.length === 0) return;
+
+        const { data, error } = await supabase.from('votacoes').select('*').in('iniciativa_id', missing);
+        if (error) {
+          throw new Error(error.message);
+        }
+        const byIniciativa = new Map<number, VotacaoRow[]>();
+        for (const row of data ?? []) {
+          const votacao = rowToVotacao(row);
+          const iniciativaId = row.iniciativa_id as number;
+          const list = byIniciativa.get(iniciativaId) ?? [];
+          list.push(votacao);
+          byIniciativa.set(iniciativaId, list);
+        }
+        for (const id of missing) {
+          votacoesCache.set(id, byIniciativa.get(id) ?? []);
+        }
+      }
+
+      function currentSortOptions() {
+        const direction = (sortControlsForm.querySelector(
+          'input[name="sort-direction"]:checked',
+        ) as HTMLInputElement).value as SortDirection;
+        return { direction, pinCurrentYear: pinCurrentYearCheckbox.checked };
+      }
+
+      function setRowBusy(row: HTMLElement, busy: boolean) {
+        row.setAttribute('aria-busy', String(busy));
+        for (const el of row.querySelectorAll('select, textarea, button')) {
+          (el as HTMLButtonElement | HTMLSelectElement | HTMLTextAreaElement).disabled = busy;
+        }
+      }
+
+      function renderPartyRow(pending: PendingVerdict): HTMLElement {
+        const row = document.createElement('div');
+        row.className = 'party-review-row';
+        row.dataset.verdictId = String(pending.verdictId);
+
+        const heading = document.createElement('h4');
+        heading.textContent = pending.partyName;
+        row.appendChild(heading);
 
         const meta = document.createElement('p');
-        meta.textContent = `${pending.tipoDesc} · ${pending.topic} · Partido: ${pending.partyName}`;
-        card.appendChild(meta);
+        meta.textContent = pending.topic;
+        row.appendChild(meta);
 
-        if (pending.epigrafe) {
-          const epigrafe = document.createElement('p');
-          epigrafe.textContent = pending.epigrafe;
-          card.appendChild(epigrafe);
-        }
-
-        if (pending.canonicalUrl) {
-          const link = document.createElement('a');
-          link.href = pending.canonicalUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.textContent = 'Ver iniciativa em parlamento.pt';
-          card.appendChild(link);
-        }
-
-        const passageHeading = document.createElement('h4');
+        const passageHeading = document.createElement('h5');
         passageHeading.textContent = pending.quotedPassage
           ? `Passagem do programa (página ${pending.citationPageNumber})`
           : 'Programa não aborda este tópico';
-        card.appendChild(passageHeading);
+        row.appendChild(passageHeading);
 
         if (pending.quotedPassage) {
           const passage = document.createElement('blockquote');
           passage.textContent = pending.quotedPassage;
-          card.appendChild(passage);
+          row.appendChild(passage);
 
           const programLink = document.createElement('a');
           programLink.href = pending.programSourceUrl;
           programLink.target = '_blank';
           programLink.rel = 'noopener noreferrer';
           programLink.textContent = `Ver programa de ${pending.partyName}`;
-          card.appendChild(programLink);
+          row.appendChild(programLink);
         }
 
-        const draftHeading = document.createElement('h4');
+        const draftHeading = document.createElement('h5');
         draftHeading.textContent = `Veredicto proposto: ${LABEL_NAMES[pending.draftLabel] ?? pending.draftLabel}`;
-        card.appendChild(draftHeading);
+        row.appendChild(draftHeading);
 
         if (pending.rationale) {
           const rationale = document.createElement('p');
           rationale.textContent = pending.rationale;
-          card.appendChild(rationale);
+          row.appendChild(rationale);
         }
 
+        const selectId = `label-select-${pending.verdictId}`;
+        const selectLabel = document.createElement('label');
+        selectLabel.setAttribute('for', selectId);
+        selectLabel.textContent = `Veredicto final para ${pending.partyName}`;
+        row.appendChild(selectLabel);
+
         const labelSelect = document.createElement('select');
+        labelSelect.id = selectId;
         for (const label of VERDICT_LABELS) {
           const option = document.createElement('option');
           option.value = label;
@@ -148,80 +233,238 @@ const title = 'Revisão de veredictos — O Que Fizeram';
           if (label === pending.draftLabel) option.selected = true;
           labelSelect.appendChild(option);
         }
-        card.appendChild(labelSelect);
+        row.appendChild(labelSelect);
+
+        const notesId = `notes-${pending.verdictId}`;
+        const notesLabel = document.createElement('label');
+        notesLabel.setAttribute('for', notesId);
+        notesLabel.textContent = `Notas sobre o veredicto de ${pending.partyName} (opcional)`;
+        row.appendChild(notesLabel);
 
         const notesInput = document.createElement('textarea');
-        notesInput.placeholder = 'Notas (opcional)';
-        card.appendChild(notesInput);
+        notesInput.id = notesId;
+        row.appendChild(notesInput);
 
         const errorEl = document.createElement('p');
+        errorEl.id = `error-${pending.verdictId}`;
         errorEl.setAttribute('role', 'alert');
-        card.appendChild(errorEl);
+        row.appendChild(errorEl);
 
         const approveButton = document.createElement('button');
         approveButton.type = 'button';
         approveButton.textContent = 'Aprovar';
         approveButton.addEventListener('click', () =>
-          submitReview(pending.verdictId, 'approved', labelSelect.value as PendingVerdict['draftLabel'], notesInput.value, card, errorEl),
+          submitReview(pending, 'approved', labelSelect.value as PendingVerdict['draftLabel'], notesInput.value, row, errorEl),
         );
-        card.appendChild(approveButton);
+        row.appendChild(approveButton);
 
         const rejectButton = document.createElement('button');
         rejectButton.type = 'button';
         rejectButton.textContent = 'Rejeitar';
         rejectButton.addEventListener('click', () =>
-          submitReview(pending.verdictId, 'rejected', null, notesInput.value, card, errorEl),
+          submitReview(pending, 'rejected', null, notesInput.value, row, errorEl),
         );
-        card.appendChild(rejectButton);
+        row.appendChild(rejectButton);
+
+        return row;
+      }
+
+      function renderInitiativeCard(group: InitiativeGroup): HTMLElement {
+        const card = document.createElement('section');
+        card.className = 'initiative-card';
+        card.dataset.iniciativaId = String(group.iniciativaId);
+
+        const heading = document.createElement('h3');
+        heading.textContent = group.titulo;
+        card.appendChild(heading);
+
+        const meta = document.createElement('p');
+        meta.textContent =
+          `${group.tipoDesc} n.º ${group.numero}` +
+          (group.dataEntrada ? ` · ${formatDate(group.dataEntrada)}` : '');
+        card.appendChild(meta);
+
+        if (group.epigrafe) {
+          const epigrafe = document.createElement('p');
+          epigrafe.textContent = group.epigrafe;
+          card.appendChild(epigrafe);
+        }
+
+        if (group.canonicalUrl) {
+          const link = document.createElement('a');
+          link.href = group.canonicalUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'Ver iniciativa em parlamento.pt';
+          card.appendChild(link);
+        }
+
+        const voteHeading = document.createElement('h4');
+        voteHeading.textContent = 'Como votou cada partido';
+        card.appendChild(voteHeading);
+        card.appendChild(renderVoteResult(votacoesCache.get(group.iniciativaId) ?? [], allSiglas));
+
+        const bulkButton = document.createElement('button');
+        bulkButton.type = 'button';
+        bulkButton.textContent = `Aprovar todos os partidos pendentes nesta iniciativa (${group.pendingByParty.length})`;
+        const bulkErrorEl = document.createElement('p');
+        bulkErrorEl.className = 'bulk-error';
+        bulkErrorEl.setAttribute('role', 'alert');
+        bulkButton.addEventListener('click', () => submitBulkApprove(group, card, bulkButton, bulkErrorEl));
+        card.appendChild(bulkButton);
+        card.appendChild(bulkErrorEl);
+
+        const partyRows = document.createElement('div');
+        partyRows.className = 'party-rows';
+        for (const pending of group.pendingByParty) {
+          partyRows.appendChild(renderPartyRow(pending));
+        }
+        card.appendChild(partyRows);
 
         return card;
       }
 
       async function submitReview(
-        verdictId: number,
+        pending: PendingVerdict,
         decision: 'approved' | 'rejected',
         finalLabel: PendingVerdict['draftLabel'] | null,
         notes: string,
-        card: HTMLElement,
+        row: HTMLElement,
         errorEl: HTMLElement,
       ) {
         errorEl.textContent = '';
         let insertRow;
         try {
-          insertRow = buildReviewInsert(verdictId, decision, finalLabel, notes);
+          insertRow = buildReviewInsert(pending.verdictId, decision, finalLabel, notes);
         } catch (err) {
           errorEl.textContent = err instanceof Error ? err.message : String(err);
           return;
         }
 
+        setRowBusy(row, true);
         const { error } = await supabase.from('verdict_reviews').insert(insertRow);
         if (error) {
+          setRowBusy(row, false);
           errorEl.textContent = `Erro ao gravar a revisão: ${error.message}`;
           return;
         }
-        card.remove();
-        if (!queueEl.children.length) {
-          queueStatusEl.textContent = 'Sem veredictos pendentes.';
-        }
+
+        allPending = allPending.filter((item) => item.verdictId !== pending.verdictId);
+        announce(
+          decision === 'approved'
+            ? `Veredicto de ${pending.partyName} aprovado para "${pending.titulo}".`
+            : `Veredicto de ${pending.partyName} rejeitado para "${pending.titulo}".`,
+        );
+        renderQueue();
       }
 
-      async function loadQueue() {
-        queueStatusEl.textContent = 'A carregar...';
-        const { data, error } = await supabase.from('pending_verdicts').select('*').limit(50);
+      async function submitBulkApprove(
+        group: InitiativeGroup,
+        card: HTMLElement,
+        bulkButton: HTMLButtonElement,
+        bulkErrorEl: HTMLElement,
+      ) {
+        bulkErrorEl.textContent = '';
+        let inserts;
+        try {
+          inserts = buildBulkApproveInserts(group.pendingByParty);
+        } catch (err) {
+          bulkErrorEl.textContent = err instanceof Error ? err.message : String(err);
+          return;
+        }
+
+        card.setAttribute('aria-busy', 'true');
+        bulkButton.disabled = true;
+        for (const el of card.querySelectorAll('select, textarea, button')) {
+          (el as HTMLButtonElement | HTMLSelectElement | HTMLTextAreaElement).disabled = true;
+        }
+
+        const { error } = await supabase.from('verdict_reviews').insert(inserts);
+        if (error) {
+          card.removeAttribute('aria-busy');
+          for (const el of card.querySelectorAll('select, textarea, button')) {
+            (el as HTMLButtonElement | HTMLSelectElement | HTMLTextAreaElement).disabled = false;
+          }
+          bulkErrorEl.textContent = `Erro ao gravar as revisões: ${error.message}`;
+          return;
+        }
+
+        const approvedIds = new Set(group.pendingByParty.map((row) => row.verdictId));
+        allPending = allPending.filter((item) => !approvedIds.has(item.verdictId));
+        announce(`${inserts.length} veredictos aprovados para "${group.titulo}".`);
+        renderQueue();
+      }
+
+      function renderQueue() {
+        const groups = groupPendingVerdictsByInitiative(allPending);
+        const sorted = sortInitiativeGroups(groups, currentSortOptions(), CURRENT_YEAR);
+
+        queueEl.replaceChildren();
+        if (sorted.length === 0) {
+          queueStatusEl.textContent = 'Sem veredictos pendentes.';
+          loadMoreButton.hidden = true;
+          return;
+        }
+        for (const group of sorted) {
+          queueEl.appendChild(renderInitiativeCard(group));
+        }
+        loadMoreButton.hidden = !lastPageWasFull;
+      }
+
+      sortControlsForm.addEventListener('change', renderQueue);
+      pinCurrentYearCheckbox.addEventListener('change', renderQueue);
+
+      async function loadPartyRoster(): Promise<void> {
+        const { data, error } = await supabase
+          .from('party_programs')
+          .select('label, party_name, ar_siglas')
+          .order('id', { ascending: true });
+        if (error) {
+          throw new Error(error.message);
+        }
+        partyRoster = (data ?? []).map(rowToPartyProgram);
+        allSiglas = flattenPartyRosterSiglas(partyRoster);
+      }
+
+      async function loadQueuePage(): Promise<void> {
+        const { data, error } = await supabase
+          .from('pending_verdicts')
+          .select('*')
+          .order('data_entrada', { ascending: false, nullsFirst: false })
+          .order('drafted_at', { ascending: true })
+          .range(offset, offset + PAGE_SIZE - 1);
+
         if (error) {
           queueStatusEl.textContent = `Erro ao carregar veredictos: ${error.message}`;
           return;
         }
 
-        queueEl.replaceChildren();
         const rows = (data ?? []).map(rowToPendingVerdict);
-        if (rows.length === 0) {
-          queueStatusEl.textContent = 'Sem veredictos pendentes.';
-          return;
-        }
-        queueStatusEl.textContent = '';
-        for (const row of rows) {
-          queueEl.appendChild(renderCard(row));
+        lastPageWasFull = rows.length === PAGE_SIZE;
+        offset += rows.length;
+        allPending = [...allPending, ...rows];
+
+        await fetchVotacoesFor([...new Set(rows.map((row) => row.iniciativaId))]);
+        renderQueue();
+      }
+
+      loadMoreButton.addEventListener('click', async () => {
+        loadMoreButton.disabled = true;
+        await loadQueuePage();
+        loadMoreButton.disabled = false;
+      });
+
+      async function loadQueue() {
+        queueStatusEl.textContent = 'A carregar...';
+        offset = 0;
+        allPending = [];
+        try {
+          if (partyRoster.length === 0) {
+            await loadPartyRoster();
+          }
+          await loadQueuePage();
+        } catch (err) {
+          queueStatusEl.textContent = `Erro ao carregar veredictos: ${err instanceof Error ? err.message : String(err)}`;
         }
       }
 
