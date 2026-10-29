@@ -186,38 +186,46 @@ const title = 'Revisão de veredictos — O Que Fizeram';
         heading.textContent = pending.partyName;
         row.appendChild(heading);
 
+        // Read-only context (topic, program passage, the model's draft) —
+        // kept visually quiet/secondary so it doesn't compete with the
+        // actual decision controls below it.
+        const context = document.createElement('div');
+        context.className = 'verdict-context';
+
         const meta = document.createElement('p');
         meta.textContent = pending.topic;
-        row.appendChild(meta);
+        context.appendChild(meta);
 
         const passageHeading = document.createElement('h5');
         passageHeading.textContent = pending.quotedPassage
           ? `Passagem do programa (página ${pending.citationPageNumber})`
           : 'Programa não aborda este tópico';
-        row.appendChild(passageHeading);
+        context.appendChild(passageHeading);
 
         if (pending.quotedPassage) {
           const passage = document.createElement('blockquote');
           passage.textContent = pending.quotedPassage;
-          row.appendChild(passage);
+          context.appendChild(passage);
 
           const programLink = document.createElement('a');
           programLink.href = pending.programSourceUrl;
           programLink.target = '_blank';
           programLink.rel = 'noopener noreferrer';
           programLink.textContent = `Ver programa de ${pending.partyName}`;
-          row.appendChild(programLink);
+          context.appendChild(programLink);
         }
 
         const draftHeading = document.createElement('h5');
         draftHeading.textContent = `Veredicto proposto: ${LABEL_NAMES[pending.draftLabel] ?? pending.draftLabel}`;
-        row.appendChild(draftHeading);
+        context.appendChild(draftHeading);
 
         if (pending.rationale) {
           const rationale = document.createElement('p');
           rationale.textContent = pending.rationale;
-          row.appendChild(rationale);
+          context.appendChild(rationale);
         }
+
+        row.appendChild(context);
 
         const selectId = `label-select-${pending.verdictId}`;
         const selectLabel = document.createElement('label');

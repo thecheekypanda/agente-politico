@@ -309,6 +309,44 @@ fieldset label {
   padding-top: 0.5rem;
 }
 
+/* Read-only context (topic, program passage, the model's draft label) —
+   kept visually quiet so it doesn't compete with the actual decision (the
+   select/buttons on /review) or the at-a-glance label chip (the homepage). */
+.verdict-context {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.verdict-context h5 {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 0.82rem;
+  text-transform: none;
+  letter-spacing: normal;
+  margin: 0.6rem 0 0.25rem;
+}
+
+.verdict-context blockquote {
+  font-size: 0.88rem;
+}
+
+.vote-notice {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.4rem;
+}
+
+.party-vote-placeholder {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
 blockquote {
   margin: 0.4rem 0;
   padding: 0.6rem 0.9rem;

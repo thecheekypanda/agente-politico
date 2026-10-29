@@ -122,7 +122,7 @@ const title = 'O Que Fizeram';
 
       function renderVerdictDetail(item: DigestItem): HTMLElement {
         const detail = document.createElement('div');
-        detail.className = 'verdict-detail';
+        detail.className = 'verdict-detail verdict-context';
 
         if (item.quotedPassage) {
           const passageHeading = document.createElement('h5');
