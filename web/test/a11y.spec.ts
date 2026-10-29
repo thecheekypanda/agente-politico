@@ -138,10 +138,26 @@ test.describe('accessibility', () => {
         ],
       }),
     );
+    await page.route('**/rest/v1/iniciativa_fases**', (route) =>
+      route.fulfill({
+        json: [
+          {
+            iniciativa_id: 100,
+            ctl_index: 0,
+            data: '2026-07-20',
+            evento: 'Entrada',
+            obs: null,
+            parecer_nao_emitido_data: null,
+            parecer_nao_emitido_motivo: null,
+          },
+        ],
+      }),
+    );
 
     await page.goto('/');
     await expect(page.getByText('PSD: A Favor')).toBeVisible();
     await expect(page.getByText('CDS-PP: Contra')).toBeVisible();
+    await expect(page.getByText('Estado atual da tramitação: Entrada')).toBeVisible();
     await page.getByRole('button', { name: 'Ver detalhe' }).click();
     await expect(page.getByText('A iniciativa concretiza a medida do programa.')).toBeVisible();
 

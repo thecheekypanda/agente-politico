@@ -74,6 +74,8 @@ const title = 'Revisão de veredictos — O Que Fizeram';
       import { rowToVotacao, type VotacaoRow } from '../lib/votes';
       import { renderVoteResult } from '../lib/vote-render';
       import { formatDate } from '../lib/format';
+      import { rowToFase, type FaseRow } from '../lib/fases';
+      import { renderFasesTimeline } from '../lib/fase-render';
 
       const signedOutSection = document.getElementById('signed-out') as HTMLElement;
       const signedInSection = document.getElementById('signed-in') as HTMLElement;
@@ -132,6 +134,7 @@ const title = 'Revisão de veredictos — O Que Fizeram';
       let partyRoster: PartyProgramRow[] = [];
       let allSiglas: string[] = [];
       const votacoesCache = new Map<number, VotacaoRow[]>();
+      const fasesCache = new Map<number, FaseRow[]>();
 
       const PAGE_SIZE = 500;
       let offset = 0;
@@ -160,6 +163,31 @@ const title = 'Revisão de veredictos — O Que Fizeram';
         }
         for (const id of missing) {
           votacoesCache.set(id, byIniciativa.get(id) ?? []);
+        }
+      }
+
+      async function fetchFasesFor(iniciativaIds: number[]): Promise<void> {
+        const missing = iniciativaIds.filter((id) => !fasesCache.has(id));
+        if (missing.length === 0) return;
+
+        const { data, error } = await supabase
+          .from('iniciativa_fases')
+          .select('*')
+          .in('iniciativa_id', missing)
+          .order('ctl_index', { ascending: true });
+        if (error) {
+          throw new Error(error.message);
+        }
+        const byIniciativa = new Map<number, FaseRow[]>();
+        for (const row of data ?? []) {
+          const fase = rowToFase(row);
+          const iniciativaId = row.iniciativa_id as number;
+          const list = byIniciativa.get(iniciativaId) ?? [];
+          list.push(fase);
+          byIniciativa.set(iniciativaId, list);
+        }
+        for (const id of missing) {
+          fasesCache.set(id, byIniciativa.get(id) ?? []);
         }
       }
 
@@ -320,6 +348,11 @@ const title = 'Revisão de veredictos — O Que Fizeram';
         card.appendChild(voteHeading);
         card.appendChild(renderVoteResult(votacoesCache.get(group.iniciativaId) ?? [], allSiglas));
 
+        const timelineHeading = document.createElement('h4');
+        timelineHeading.textContent = 'Tramitação';
+        card.appendChild(timelineHeading);
+        card.appendChild(renderFasesTimeline(fasesCache.get(group.iniciativaId) ?? []));
+
         const bulkButton = document.createElement('button');
         bulkButton.type = 'button';
         bulkButton.textContent = `Aprovar todos os vereditos pendentes nesta iniciativa (${group.pendingByParty.length})`;
@@ -460,7 +493,9 @@ const title = 'Revisão de veredictos — O Que Fizeram';
         offset += rows.length;
         allPending = [...allPending, ...rows];
 
-        await fetchVotacoesFor([...new Set(rows.map((row) => row.iniciativaId))]);
+        const iniciativaIds = [...new Set(rows.map((row) => row.iniciativaId))];
+        await fetchVotacoesFor(iniciativaIds);
+        await fetchFasesFor(iniciativaIds);
         renderQueue();
       }
 
