@@ -1,7 +1,8 @@
 // Temporary, one-off investigation script — NOT part of the pipeline.
-// Fetches a real DetalheIniciativa page and extracts the HTML around known
-// timeline keywords, to design a scraper against the real markup instead
-// of guessing. Delete this file once that's done.
+// Fetches a real DetalheIniciativa page and extracts every rptFases phase
+// (date + event title + optional obs), in order, to design a scraper
+// against the real markup instead of guessing. Delete this file once
+// that's done.
 export {};
 
 const bid = process.argv[2] ?? '315892';
@@ -10,24 +11,20 @@ const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
 const html = await res.text();
 console.log(`status: ${res.status}, length: ${html.length}`);
 
-const keywords = [
-  'Entrada',
-  'Admiss',
-  'Baixa',
-  'comiss',
-  'Anúncio',
-  'Anuncio',
-  'arrastamento',
-  'Votação',
-  'Eventos',
-  'eventos',
-  'timeline',
-];
+const dataRe = /rptFases_ctl(\d+)_lblData" class="TextoRegular">([^<]*)</g;
+const eventoRe = /rptFases_ctl(\d+)_lblEvento" class="TextoRegular-Titulo">([^<]*)</g;
+const obsRe = /rptFases_ctl(\d+)_lblObs" class="TextoRegular">([^<]*(?:<b>[^<]*<\/b>[^<]*)?)</g;
 
-for (const kw of keywords) {
-  const idx = html.indexOf(kw);
-  console.log(`\n--- first match for "${kw}": ${idx === -1 ? 'NOT FOUND' : `at ${idx}`} ---`);
-  if (idx !== -1) {
-    console.log(html.slice(Math.max(0, idx - 300), idx + 600));
-  }
+const dates = new Map<string, string>();
+const eventos = new Map<string, string>();
+const obs = new Map<string, string>();
+
+for (const m of html.matchAll(dataRe)) dates.set(m[1], m[2].trim());
+for (const m of html.matchAll(eventoRe)) eventos.set(m[1], m[2].trim());
+for (const m of html.matchAll(obsRe)) obs.set(m[1], m[2].trim());
+
+const allCtl = [...new Set([...dates.keys(), ...eventos.keys()])].sort((a, b) => Number(a) - Number(b));
+console.log(`\nfound ${allCtl.length} phases:`);
+for (const ctl of allCtl) {
+  console.log(`  ctl${ctl}: ${dates.get(ctl) ?? '(no date)'} — ${eventos.get(ctl) ?? '(no evento)'}${obs.has(ctl) ? ` [obs: ${obs.get(ctl)}]` : ''}`);
 }
