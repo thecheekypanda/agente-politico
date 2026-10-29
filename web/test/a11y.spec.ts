@@ -77,13 +77,20 @@ test.describe('accessibility', () => {
     expect(results.violations).toEqual([]);
   });
 
-  test('digest homepage, including an expanded drill-down with a split coalition vote, has no WCAG 2.1 AA violations', async ({
+  test('digest homepage, including an expanded verdict detail with a split coalition vote, has no WCAG 2.1 AA violations', async ({
     page,
   }) => {
     // A coalition (AD = PSD + CDS-PP) that split on a vote — the exact
     // scenario backlog 4.2 built to never merge into one fabricated
-    // position — so the a11y scan covers the fully-rendered detail panel,
-    // not just the empty page shell.
+    // position — so the a11y scan covers the fully-rendered card, not
+    // just the empty page shell. The vote block is always visible (no
+    // click needed); only the per-party citation/rationale detail is
+    // still behind a "Ver detalhe" toggle.
+    await page.route('**/rest/v1/party_programs**', (route) =>
+      route.fulfill({
+        json: [{ id: 1, label: 'AD', party_name: 'AD — Coligação PSD/CDS', ar_siglas: ['PSD', 'CDS-PP'] }],
+      }),
+    );
     await page.route('**/rest/v1/public_digest**', (route) =>
       route.fulfill({
         json: [
@@ -133,9 +140,10 @@ test.describe('accessibility', () => {
     );
 
     await page.goto('/');
-    await page.getByRole('button', { name: 'Ver detalhe' }).click();
     await expect(page.getByText('PSD: A Favor')).toBeVisible();
     await expect(page.getByText('CDS-PP: Contra')).toBeVisible();
+    await page.getByRole('button', { name: 'Ver detalhe' }).click();
+    await expect(page.getByText('A iniciativa concretiza a medida do programa.')).toBeVisible();
 
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);
