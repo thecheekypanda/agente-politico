@@ -347,6 +347,33 @@ fieldset label {
   font-size: 0.9rem;
 }
 
+.timeline-current {
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+.timeline-list {
+  margin: 0.6rem 0 0;
+  padding-left: 1.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.timeline-list li {
+  padding-left: 0.2rem;
+}
+
+.timeline-list p {
+  margin: 0;
+}
+
+.timeline-note {
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  margin-top: 0.15rem;
+}
+
 blockquote {
   margin: 0.4rem 0;
   padding: 0.6rem 0.9rem;

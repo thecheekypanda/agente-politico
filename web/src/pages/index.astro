@@ -56,6 +56,8 @@ const title = 'O Que Fizeram';
       import { flattenPartyRosterSiglas, rowToPartyProgram, type PartyProgramRow } from '../lib/party-roster';
       import { formatDate } from '../lib/format';
       import { appendMaybeGlossaryLink, renderVoteResult } from '../lib/vote-render';
+      import { rowToFase, type FaseRow } from '../lib/fases';
+      import { renderFasesTimeline } from '../lib/fase-render';
 
       const LABEL_NAMES: Record<string, string> = {
         aligned: 'Alinhado',
@@ -78,6 +80,7 @@ const title = 'O Que Fizeram';
       let allRows: DigestRow[] = [];
       let allSiglas: string[] = [];
       const votacoesCache = new Map<number, VotacaoRow[]>();
+      const fasesCache = new Map<number, FaseRow[]>();
 
       function formatWeek(weekStart: string): string {
         const start = new Date(`${weekStart}T00:00:00Z`);
@@ -105,6 +108,31 @@ const title = 'O Que Fizeram';
         }
         for (const id of missing) {
           votacoesCache.set(id, byIniciativa.get(id) ?? []);
+        }
+      }
+
+      async function fetchFasesFor(iniciativaIds: number[]): Promise<void> {
+        const missing = iniciativaIds.filter((id) => !fasesCache.has(id));
+        if (missing.length === 0) return;
+
+        const { data, error } = await supabase
+          .from('iniciativa_fases')
+          .select('*')
+          .in('iniciativa_id', missing)
+          .order('ctl_index', { ascending: true });
+        if (error) {
+          throw new Error(error.message);
+        }
+        const byIniciativa = new Map<number, FaseRow[]>();
+        for (const row of data ?? []) {
+          const fase = rowToFase(row);
+          const iniciativaId = row.iniciativa_id as number;
+          const list = byIniciativa.get(iniciativaId) ?? [];
+          list.push(fase);
+          byIniciativa.set(iniciativaId, list);
+        }
+        for (const id of missing) {
+          fasesCache.set(id, byIniciativa.get(id) ?? []);
         }
       }
 
@@ -226,6 +254,11 @@ const title = 'O Que Fizeram';
         article.appendChild(voteHeading);
         article.appendChild(renderVoteResult(votacoesCache.get(card.iniciativaId) ?? [], allSiglas));
 
+        const timelineHeading = document.createElement('h4');
+        timelineHeading.textContent = 'Tramitação';
+        article.appendChild(timelineHeading);
+        article.appendChild(renderFasesTimeline(fasesCache.get(card.iniciativaId) ?? []));
+
         const alignmentHeading = document.createElement('h4');
         alignmentHeading.textContent = 'Alinhamento com os partidos';
         article.appendChild(alignmentHeading);
@@ -335,7 +368,9 @@ const title = 'O Que Fizeram';
           if (allRows.length > 0) {
             filtersEl.hidden = false;
             buildPartyCheckboxes(allRows);
-            await fetchVotacoesFor([...new Set(allRows.map((row) => row.iniciativaId))]);
+            const iniciativaIds = [...new Set(allRows.map((row) => row.iniciativaId))];
+            await fetchVotacoesFor(iniciativaIds);
+            await fetchFasesFor(iniciativaIds);
           }
           render();
         } catch (err) {
